@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CityPilot · Gestion des services techniques</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --paper:#F4F6F5; --panel:#FFFFFF; --ink:#182226; --muted:#5C6B70;
+  --line:#DBE2E0; --bleu:#2F5B7C; --bleu-d:#1C3B52; --bleu-t:#E8EFF4;
+  --signal:#E8620F; --signal-t:#FCEDE2; --ok:#2E7D52; --ok-t:#E4F1EA;
+  --warn:#B77A12; --warn-t:#F8EFDB; --danger:#C13B2A; --danger-t:#F9E6E2;
+  --r:10px; --shadow:0 1px 3px rgba(24,34,38,.08),0 6px 18px rgba(24,34,38,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Public Sans',system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5}
+h1,h2,h3,.disp{font-family:'Barlow Semi Condensed',sans-serif;letter-spacing:.01em}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--bleu);outline-offset:1px;border-color:var(--bleu)}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.field{margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ---- boutons ---- */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13px;color:var(--ink)}
+.btn:hover{border-color:var(--bleu);color:var(--bleu)}
+.btn.pri{background:var(--bleu);border-color:var(--bleu);color:#fff}
+.btn.pri:hover{background:var(--bleu-d)}
+.btn.sig{background:var(--signal);border-color:var(--signal);color:#fff}
+.btn.ghost{border:none;background:transparent;color:var(--muted)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn.dngr{color:var(--danger);border-color:var(--danger-t)}
+.btn:focus-visible{outline:2px solid var(--bleu);outline-offset:2px}
+
+/* ---- badges ---- */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:700}
+.b-ok{background:var(--ok-t);color:var(--ok)} .b-warn{background:var(--warn-t);color:var(--warn)}
+.b-danger{background:var(--danger-t);color:var(--danger)} .b-bleu{background:var(--bleu-t);color:var(--bleu)}
+.b-muted{background:#ECEFEE;color:var(--muted)}
+.b-signal{background:var(--signal-t);color:var(--signal)}
+
+/* ---- écran connexion ---- */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:linear-gradient(160deg,#1C3B52 0%,#2F5B7C 60%,#3C6E93 100%)}
+.login-card{width:400px;max-width:100%;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden}
+.login-band{height:10px;background:repeating-linear-gradient(-45deg,var(--signal) 0 14px,#1C3B52 14px 28px)}
+.login-card .inner{padding:28px}
+.logo{font-family:'Barlow Semi Condensed';font-weight:700;font-size:26px;color:var(--bleu-d)}
+.logo em{font-style:normal;color:var(--signal)}
+.login-sub{color:var(--muted);margin:4px 0 20px}
+.login-links{margin-top:16px;display:flex;justify-content:space-between;font-size:13px}
+.login-links a{color:var(--bleu);cursor:pointer;text-decoration:none;font-weight:600}
+.demo-hint{margin-top:16px;padding:10px;background:var(--paper);border-radius:8px;font-size:12px;color:var(--muted)}
+
+/* ---- structure app ---- */
+#app{display:none;height:100vh}
+#app.on{display:grid;grid-template-columns:228px 1fr}
+aside{background:var(--bleu-d);color:#C9D8E2;display:flex;flex-direction:column;overflow-y:auto}
+aside .logo{color:#fff;padding:18px 16px 8px;font-size:22px}
+aside .commune{padding:0 16px 14px;font-size:12px;color:#8FA9BC;border-bottom:1px solid rgba(255,255,255,.1)}
+.nav-sec{padding:12px 10px 2px;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:#7593A9;font-weight:700}
+.nav a{display:flex;align-items:center;gap:9px;padding:8px 12px;margin:1px 6px;border-radius:8px;color:#C9D8E2;text-decoration:none;font-size:13.5px;font-weight:500}
+.nav a:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav a.on{background:var(--bleu);color:#fff}
+.nav .cnt{margin-left:auto;background:var(--signal);color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:12px}
+.nav svg{width:16px;height:16px;flex:none}
+aside .foot{margin-top:auto;padding:14px 16px;border-top:1px solid rgba(255,255,255,.1);font-size:12px}
+main{overflow-y:auto;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:14px;padding:14px 24px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:500}
+.topbar h1{font-size:20px;font-weight:600}
+.topbar .sp{flex:1}
+.bell{position:relative;border:none;background:none;padding:6px}
+.bell .dot{position:absolute;top:2px;right:0;background:var(--signal);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 5px}
+.content{padding:22px 24px;flex:1}
+
+/* ---- cartes / panneaux ---- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.card .hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.card .hd h2{font-size:16px}
+.card .hd .sp{flex:1}
+.card .bd{padding:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;border-left:4px solid var(--bleu)}
+.kpi:hover{border-color:var(--bleu)}
+.kpi.alert{border-left-color:var(--signal)}
+.kpi .n{font-family:'Barlow Semi Condensed';font-size:30px;font-weight:700;line-height:1.1}
+.kpi .l{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .s{font-size:11.5px;margin-top:3px}
+
+/* ---- tableaux ---- */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:9px 12px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:hover{background:var(--bleu-t)}
+tbody tr{cursor:pointer}
+.tbl-wrap{overflow-x:auto}
+
+/* ---- cartes Leaflet ---- */
+.map-box{height:480px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+.map-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.map-tools .hint{font-size:12.5px;color:var(--muted)}
+.addmode .leaflet-container{cursor:crosshair!important}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12.5px;color:var(--muted)}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+
+/* ---- alertes ---- */
+.alert-row{display:flex;gap:12px;align-items:flex-start;padding:11px 4px;border-bottom:1px solid var(--line)}
+.alert-row:last-child{border:none}
+.alert-ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;font-size:16px}
+.alert-row .t{font-weight:600;font-size:13.5px}
+.alert-row .d{font-size:12.5px;color:var(--muted)}
+.stripe-band{height:6px;border-radius:3px;background:repeating-linear-gradient(-45deg,var(--signal) 0 10px,var(--bleu-d) 10px 20px);margin-bottom:14px}
+
+/* ---- onglets ---- */
+.tabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
+.tabs button{border:none;background:none;padding:9px 14px;font-weight:600;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px}
+.tabs button.on{color:var(--bleu);border-color:var(--bleu)}
+
+/* ---- modale ---- */
+.modal-bg{position:fixed;inset:0;background:rgba(20,30,36,.5);display:none;align-items:flex-start;justify-content:center;z-index:2000;padding:40px 16px;overflow-y:auto}
+.modal-bg.on{display:flex}
+.modal{background:#fff;border-radius:14px;width:560px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal .hd{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.modal .hd h2{font-size:18px;flex:1}
+.modal .bd{padding:20px;max-height:70vh;overflow-y:auto}
+.modal .ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+
+/* ---- page citoyenne ---- */
+.pub-wrap{min-height:100vh;background:var(--paper)}
+.pub-hero{background:var(--bleu-d);color:#fff;padding:34px 20px;text-align:center}
+.pub-hero h1{font-size:30px}
+.pub-hero p{color:#B9CCD9;max-width:560px;margin:8px auto 0}
+.pub-body{max-width:860px;margin:-18px auto 40px;padding:0 16px}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-weight:600;z-index:3000;display:none;box-shadow:var(--shadow)}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.mini{font-size:12px;color:var(--muted)}
+.link{color:var(--bleu);cursor:pointer;font-weight:600;text-decoration:none}
+@media(max-width:900px){
+  #app.on{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  aside{flex-direction:row;flex-wrap:wrap;align-items:center;overflow-x:auto}
+  aside .commune,.nav-sec,aside .foot{display:none}
+  .nav{display:flex}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ================= CONNEXION ================= -->
+<div class="login-wrap" id="loginScreen">
+  <div class="login-card">
+    <div class="login-band"></div>
+    <div class="inner">
+      <div class="logo">City<em>Pilot</em></div>
+      <p class="login-sub">Gestion du patrimoine communal &amp; services techniques</p>
+      <form id="loginForm">
+        <div class="field"><label for="loginCode">Code client</label>
+          <input id="loginCode" autocomplete="username" placeholder="ex. VALMONT37" required></div>
+        <div class="field"><label for="loginPwd">Mot de passe</label>
+          <input id="loginPwd" type="password" autocomplete="current-password" required></div>
+        <button class="btn pri" style="width:100%;justify-content:center;padding:11px">Se connecter</button>
+      </form>
+      <div class="login-links">
+        <a id="lnkPublic">Espace citoyen · signaler un problème</a>
+        <a id="lnkAdmin">Administration</a>
+      </div>
+      <div class="demo-hint">Démo — client : <b>VALMONT37</b> / <b>demo</b> · admin : <b>ADMIN</b> / <b>admin</b></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= APPLICATION ================= -->
+<div id="app">
+  <aside>
+    <div class="logo">City<em style="font-style:normal;color:var(--signal)">Pilot</em></div>
+    <div class="commune" id="sbCommune"></div>
+    <nav class="nav" id="mainNav"></nav>
+    <div class="foot">
+      <span id="sbUser"></span><br>
+      <a class="link" style="color:#9FC0D6" id="btnLogout">Se déconnecter</a>
+    </div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <h1 id="pageTitle">Tableau de bord</h1>
+      <div class="sp"></div>
+      <button class="bell" id="btnBell" title="Alertes">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6B70" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        <span class="dot" id="bellCount" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="content" id="view"></div>
+  </main>
+</div>
+
+<!-- ================= ESPACE CITOYEN ================= -->
+<div class="pub-wrap" id="publicScreen" style="display:none">
+  <div class="pub-hero">
+    <h1>Signaler un problème sur la commune</h1>
+    <p>Nid-de-poule, lampadaire en panne, dépôt sauvage, mobilier dégradé… Votre signalement est transmis directement aux services techniques.</p>
+  </div>
+  <div class="pub-body">
+    <div class="card">
+      <div class="bd">
+        <div class="grid2">
+          <div>
+            <div class="field"><label>Catégorie</label>
+              <select id="pubCat">
+                <option>Voirie / chaussée</option><option>Éclairage public</option>
+                <option>Propreté / dépôt sauvage</option><option>Espaces verts / arbre</option>
+                <option>Mobilier urbain</option><option>Bâtiment communal</option><option>Autre</option>
+              </select></div>
+            <div class="field"><label>Description</label>
+              <textarea id="pubDesc" rows="4" placeholder="Décrivez le problème et sa localisation précise…"></textarea></div>
+            <div class="grid2">
+              <div class="field"><label>Votre nom (facultatif)</label><input id="pubNom"></div>
+              <div class="field"><label>Email ou téléphone (facultatif)</label><input id="pubContact"></div>
+            </div>
+            <button class="btn sig" id="pubSend" style="width:100%;justify-content:center;padding:11px">Envoyer le signalement</button>
+            <p class="mini" style="margin-top:8px">Cliquez sur la carte pour positionner le problème (recommandé).</p>
+          </div>
+          <div><div class="map-box" id="pubMap" style="height:340px"></div></div>
+        </div>
+      </div>
+    </div>
+    <p style="text-align:center;margin-top:16px"><a class="link" id="pubBack">← Retour à la connexion agents</a></p>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+/* =====================================================================
+   CityPilot — prototype fonctionnel (mode démo, données en mémoire)
+   Branchements prévus : Firebase (Auth + Firestore) et Stripe.
+   Voir la page "Paramètres & intégrations" et le README.
+   ===================================================================== */
+
+/* ---------- Configuration Firebase / Stripe (à remplir en prod) ---------- */
+const FIREBASE_CONFIG = null; /* ex: { apiKey:"...", authDomain:"...", projectId:"..." } */
+const STRIPE_PAYMENT_LINK = null; /* lien de paiement Stripe (abonnement) */
+
+const CENTER = [47.302, 0.752]; // commune de démonstration
+const today = () => new Date().toISOString().slice(0,10);
+const addDays = (d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+const fmtD = d => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+const daysTo = d => Math.ceil((new Date(d)-new Date())/86400000);
+const uid = () => Math.random().toString(36).slice(2,9);
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ------------------------------ Données démo ------------------------------ */
+const DB = {
+  clients: [
+    {id:'c1', code:'VALMONT37', pwd:'demo', commune:'Valmont-sur-Cère', contact:'st@valmont.fr',
+     abo:'actif', echeance:addDays(today(),212), plan:'Commune < 5 000 hab.'},
+    {id:'c2', code:'STMARTIN', pwd:'demo', commune:'Saint-Martin-le-Bourg', contact:'mairie@stmartin.fr',
+     abo:'essai', echeance:addDays(today(),12), plan:'Essai gratuit 30 j'},
+  ],
+  arbres: [
+    {id:uid(), lat:47.3035, lng:0.7508, essence:'Platane commun', hauteur:'18 m', etat:'Bon', plantation:'1962', lieu:'Place de la Mairie', note:''},
+    {id:uid(), lat:47.3041, lng:0.7531, essence:'Tilleul à grandes feuilles', hauteur:'12 m', etat:'À surveiller', plantation:'1985', lieu:'Rue des Écoles', note:'Branche morte côté rue'},
+    {id:uid(), lat:47.2998, lng:0.7549, essence:'Chêne pédonculé', hauteur:'22 m', etat:'Bon', plantation:'~1930', lieu:'Parc du Lavoir', note:''},
+    {id:uid(), lat:47.3009, lng:0.7477, essence:'Érable sycomore', hauteur:'9 m', etat:'Dépérissant', plantation:'2001', lieu:'Lotissement des Vignes', note:'Abattage à programmer'},
+  ],
+  mobilier: [
+    {id:uid(), lat:47.3032, lng:0.7512, type:'Banc', etat:'Bon', pose:'2019', lieu:'Place de la Mairie', note:''},
+    {id:uid(), lat:47.3018, lng:0.7539, type:'Abribus', etat:'Dégradé', pose:'2008', lieu:'Rue Nationale', note:'Vitre cassée'},
+    {id:uid(), lat:47.2995, lng:0.7546, type:'Table pique-nique', etat:'Bon', pose:'2021', lieu:'Parc du Lavoir', note:''},
+    {id:uid(), lat:47.3046, lng:0.7495, type:'Poubelle', etat:'À remplacer', pose:'2012', lieu:'École primaire', note:''},
+  ],
+  interventions: [
+    {id:uid(), lat:47.3029, lng:0.7556, type:'Nid-de-poule', voie:'Rue Nationale', priorite:'Haute', statut:'À faire',
+     cree:addDays(today(),-9), desc:'Nid-de-poule 40 cm devant le n°12', histo:[{d:addDays(today(),-9),t:'Créée suite tournée voirie'}]},
+    {id:uid(), lat:47.3005, lng:0.7489, type:'Marquage au sol', voie:'Rue des Écoles', priorite:'Moyenne', statut:'En cours',
+     cree:addDays(today(),-21), desc:'Passage piéton effacé devant l’école', histo:[{d:addDays(today(),-21),t:'Créée'},{d:addDays(today(),-3),t:'Devis signé, travaux planifiés'}]},
+    {id:uid(), lat:47.3052, lng:0.7524, type:'Affaissement', voie:'Chemin des Vignes', priorite:'Basse', statut:'Terminée',
+     cree:addDays(today(),-60), desc:'Affaissement accotement', histo:[{d:addDays(today(),-60),t:'Créée'},{d:addDays(today(),-14),t:'Reprise enrobé réalisée'},{d:addDays(today(),-14),t:'Clôturée'}]},
+  ],
+  armoires: [
+    {id:uid(), lat:47.3038, lng:0.7502, ref:'AEP-01', points:34, etat:'Bon', horloge:'Astronomique', abaissement:'Oui (23h-5h)', lieu:'Mairie'},
+    {id:uid(), lat:47.2991, lng:0.7551, ref:'AEP-02', points:21, etat:'Vétuste', horloge:'Mécanique', abaissement:'Non', lieu:'Parc du Lavoir'},
+    {id:uid(), lat:47.3056, lng:0.7468, ref:'AEP-03', points:18, etat:'Bon', horloge:'Astronomique', abaissement:'Oui (23h-5h)', lieu:'Zone artisanale'},
+  ],
+  bornes: [
+    {id:uid(), lat:47.3033, lng:0.7519, ref:'PI-004', diametre:'100 mm', pression:'5,2 bar', controle:addDays(today(),-190), etat:'Conforme', lieu:'Place de la Mairie'},
+    {id:uid(), lat:47.3012, lng:0.7472, ref:'PI-007', diametre:'100 mm', pression:'3,8 bar', controle:addDays(today(),-420), etat:'Débit insuffisant', lieu:'Lotissement des Vignes'},
+    {id:uid(), lat:47.2988, lng:0.7539, ref:'PI-011', diametre:'150 mm', pression:'6,1 bar', controle:addDays(today(),-95), etat:'Conforme', lieu:'Route de Tours'},
+  ],
+  dae: [
+    {id:uid(), lat:47.3036, lng:0.7509, lieu:'Mairie — hall d’accueil', modele:'Zoll AED Plus',
+     electrodes:addDays(today(),18), batterie:addDays(today(),340), controle:addDays(today(),-20)},
+    {id:uid(), lat:47.3007, lng:0.7491, lieu:'Salle des fêtes', modele:'Schiller Fred PA-1',
+     electrodes:addDays(today(),150), batterie:addDays(today(),25), controle:addDays(today(),-45)},
+    {id:uid(), lat:47.3049, lng:0.7462, lieu:'Complexe sportif', modele:'Zoll AED Plus',
+     electrodes:addDays(today(),400), batterie:addDays(today(),520), controle:addDays(today(),-10)},
+  ],
+  batiments: [
+    {id:uid(), lat:47.3037, lng:0.7507, nom:'Mairie', surface:640, erpType:'W', erpCat:'5', annee:'1890', energie:'Gaz', commission:addDays(today(),-300), note:''},
+    {id:uid(), lat:47.3006, lng:0.7490, nom:'Salle des fêtes', surface:480, erpType:'L', erpCat:'4', annee:'1978', energie:'Électrique', commission:addDays(today(),-700), note:'Prochaine commission sécurité à programmer'},
+    {id:uid(), lat:47.3044, lng:0.7497, nom:'École primaire Jules-Ferry', surface:1250, erpType:'R', erpCat:'4', annee:'1965', energie:'Fioul → PAC prévue', commission:addDays(today(),-150), note:''},
+    {id:uid(), lat:47.3050, lng:0.7463, nom:'Gymnase municipal', surface:1600, erpType:'X', erpCat:'3', annee:'1992', energie:'Gaz', commission:addDays(today(),-400), note:''},
+  ],
+  vehicules: [
+    {id:uid(), nom:'Camion benne', immat:'FD-482-KL', marque:'Renault Master', annee:2018, km:88400,
+     ct:addDays(today(),21), revision:addDays(today(),160), assurance:addDays(today(),300),
+     travaux:[{d:addDays(today(),-90),t:'Vidange + filtres',cout:280,km:85200},{d:addDays(today(),-300),t:'Plaquettes AV',cout:190,km:79000}]},
+    {id:uid(), nom:'Fourgon espaces verts', immat:'GH-115-ZN', marque:'Citroën Jumper', annee:2020, km:52300,
+     ct:addDays(today(),380), revision:addDays(today(),-12), assurance:addDays(today(),300),
+     travaux:[{d:addDays(today(),-410),t:'Pneus x4',cout:520,km:41000}]},
+    {id:uid(), nom:'Tracteur tondeuse', immat:'—', marque:'Kubota BX231', annee:2021, km:1120,
+     ct:null, revision:addDays(today(),45), assurance:addDays(today(),300),
+     travaux:[{d:addDays(today(),-60),t:'Affûtage lames + courroie',cout:140,km:1050}]},
+    {id:uid(), nom:'Véhicule de service', immat:'EK-903-PB', marque:'Peugeot Partner', annee:2016, km:131900,
+     ct:addDays(today(),-8), revision:addDays(today(),90), assurance:addDays(today(),300),
+     travaux:[{d:addDays(today(),-30),t:'Batterie',cout:130,km:131000},{d:addDays(today(),-200),t:'Distribution',cout:640,km:124000}]},
+  ],
+  signalements: [
+    {id:uid(), lat:47.3021, lng:0.7534, cat:'Éclairage public', desc:'Lampadaire clignotant rue Nationale, face à la boulangerie',
+     nom:'M. Perrin', contact:'06 12 34 56 78', date:addDays(today(),-2), statut:'Nouveau'},
+    {id:uid(), lat:47.2997, lng:0.7544, cat:'Propreté / dépôt sauvage', desc:'Dépôt de gravats à l’entrée du parc',
+     nom:'', contact:'', date:addDays(today(),-6), statut:'En cours'},
+  ],
+};
+let session = null; // {type:'client'|'admin', client}
+
+/* Persistance : en mode démo les données restent en mémoire.
+   En production, remplacer save()/load() par Firestore (voir Paramètres). */
+function save(){ /* firestore.collection(...).set(...) */ }
+
+/* ------------------------------ Alertes ------------------------------ */
+function computeAlerts(){
+  const A=[];
+  DB.vehicules.forEach(v=>{
+    if(v.ct){const d=daysTo(v.ct);
+      if(d<0)A.push({lvl:'danger',ico:'🚛',t:`Contrôle technique dépassé — ${v.nom}`,d:`${v.immat} · échéance ${fmtD(v.ct)} (${-d} j de retard)`,go:'vehicules'});
+      else if(d<=30)A.push({lvl:'warn',ico:'🚛',t:`Contrôle technique dans ${d} j — ${v.nom}`,d:`${v.immat} · ${fmtD(v.ct)}`,go:'vehicules'});}
+    if(v.revision){const d=daysTo(v.revision);
+      if(d<0)A.push({lvl:'danger',ico:'🔧',t:`Révision dépassée — ${v.nom}`,d:`Prévue le ${fmtD(v.revision)}`,go:'vehicules'});
+      else if(d<=30)A.push({lvl:'warn',ico:'🔧',t:`Révision dans ${d} j — ${v.nom}`,d:fmtD(v.revision),go:'vehicules'});}
+  });
+  DB.dae.forEach(x=>{
+    [['electrodes','Électrodes'],['batterie','Batterie']].forEach(([k,lbl])=>{
+      const d=daysTo(x[k]);
+      if(d<0)A.push({lvl:'danger',ico:'⚡',t:`${lbl} périmées — DAE ${x.lieu}`,d:`Péremption ${fmtD(x[k])}`,go:'dae'});
+      else if(d<=30)A.push({lvl:'warn',ico:'⚡',t:`${lbl} à remplacer sous ${d} j — DAE ${x.lieu}`,d:`Péremption ${fmtD(x[k])}`,go:'dae'});
+    });
+  });
+  DB.signalements.filter(s=>s.statut==='Nouveau').forEach(s=>
+    A.push({lvl:'signal',ico:'📢',t:`Nouveau signalement citoyen — ${s.cat}`,d:s.desc,go:'signalements'}));
+  DB.interventions.filter(i=>i.statut==='À faire'&&i.priorite==='Haute').forEach(i=>
+    A.push({lvl:'warn',ico:'🛣️',t:`Intervention voirie prioritaire — ${i.type}`,d:`${i.voie} · créée le ${fmtD(i.cree)}`,go:'voirie'}));
+  DB.bornes.filter(b=>daysTo(b.controle)< -365).forEach(b=>
+    A.push({lvl:'warn',ico:'🧯',t:`Contrôle borne incendie > 1 an — ${b.ref}`,d:`Dernier contrôle ${fmtD(b.controle)}`,go:'bornes'}));
+  return A;
+}
+
+/* ------------------------------ Utilitaires UI ------------------------------ */
+const $ = s => document.querySelector(s);
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2600);}
+function openModal(html){$('#modalBox').innerHTML=html;$('#modalBg').classList.add('on');}
+function closeModal(){$('#modalBg').classList.remove('on');}
+$('#modalBg').addEventListener('click',e=>{if(e.target.id==='modalBg')closeModal();});
+function etatBadge(e){
+  const ok=['Bon','Conforme','Actif','Terminée','Traité','actif'],warn=['À surveiller','À remplacer','Dégradé','En cours','Vétuste','essai'],
+  bad=['Dépérissant','Débit insuffisant','Hors service','À faire','Nouveau','suspendu'];
+  const c=ok.includes(e)?'b-ok':warn.includes(e)?'b-warn':bad.includes(e)?'b-danger':'b-muted';
+  return `<span class="badge ${c}">${esc(e)}</span>`;
+}
+function dateBadge(d){
+  if(!d)return '<span class="badge b-muted">—</span>';
+  const n=daysTo(d);
+  const c=n<0?'b-danger':n<=30?'b-warn':'b-ok';
+  return `<span class="badge ${c}">${fmtD(d)}${n<0?` (+${-n} j)`:n<=30?` (${n} j)`:''}</span>`;
+}
+</script>
+<script>
+/* ------------------------------ Navigation ------------------------------ */
+const ICONS = {
+  dash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>',
+  pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  truck:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="14" height="10"/><path d="M15 10h4l3 3v3h-7z"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v10h14V10"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 8-6-16-3 8H2"/></svg>',
+  mega:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2l14 5V6L3 11z"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>',
+  tree:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22v-5"/><path d="M7 17h10l-3-5h2l-4-7-4 7h2l-3 5z"/></svg>',
+  fire:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c4 0 7-3 7-7 0-5-4-7-4-11-3 2-4 5-4 7-1-1-2-3-2-5-2 2-4 5-4 9 0 4 3 7 7 7z"/></svg>',
+  road:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21 9 3M20 21 15 3M12 7v2M12 13v2M12 19v2"/></svg>',
+};
+const NAV = [
+  {sec:'Pilotage'},
+  {id:'dash', label:'Tableau de bord', ico:'dash'},
+  {id:'signalements', label:'Signalements', ico:'mega', cnt:()=>DB.signalements.filter(s=>s.statut==='Nouveau').length},
+  {sec:'Patrimoine cartographié'},
+  {id:'arbres', label:'Arbres', ico:'tree'},
+  {id:'mobilier', label:'Mobilier urbain', ico:'pin'},
+  {id:'voirie', label:'Voirie & interventions', ico:'road', cnt:()=>DB.interventions.filter(i=>i.statut!=='Terminée').length},
+  {id:'armoires', label:'Éclairage public', ico:'bolt'},
+  {id:'bornes', label:'Bornes incendie', ico:'fire'},
+  {id:'dae', label:'Défibrillateurs', ico:'heart', cnt:()=>DB.dae.filter(x=>daysTo(x.electrodes)<=30||daysTo(x.batterie)<=30).length},
+  {sec:'Moyens'},
+  {id:'vehicules', label:'Flotte véhicules', ico:'truck', cnt:()=>DB.vehicules.filter(v=>(v.ct&&daysTo(v.ct)<=30)||(v.revision&&daysTo(v.revision)<=30)).length},
+  {id:'batiments', label:'Bâtiments', ico:'home'},
+  {sec:'Compte'},
+  {id:'params', label:'Paramètres & intégrations', ico:'gear'},
+];
+const NAV_ADMIN = [{sec:'Administration'},{id:'admin',label:'Clients & abonnements',ico:'users'},{id:'params',label:'Intégrations',ico:'gear'}];
+
+function renderNav(){
+  const items = session.type==='admin'?NAV_ADMIN:NAV;
+  $('#mainNav').innerHTML = items.map(n=>{
+    if(n.sec)return `<div class="nav-sec">${n.sec}</div>`;
+    const c=n.cnt?n.cnt():0;
+    return `<a href="#${n.id}" data-v="${n.id}">${ICONS[n.ico]||''}<span>${n.label}</span>${c?`<span class="cnt">${c}</span>`:''}</a>`;
+  }).join('');
+  $('#mainNav').querySelectorAll('a').forEach(a=>a.onclick=e=>{e.preventDefault();show(a.dataset.v);});
+}
+function refreshBell(){
+  const n=computeAlerts().length;
+  $('#bellCount').style.display=n?'block':'none';$('#bellCount').textContent=n;
+}
+let currentView='dash';
+function show(v){
+  currentView=v;
+  renderNav();refreshBell();
+  $('#mainNav').querySelectorAll('a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));
+  VIEWS[v]?.();
+  window.scrollTo(0,0);
+}
+
+/* ------------------------------ Carte générique ------------------------------ */
+const MAPCOLORS={arbres:'#2E7D52',mobilier:'#7B5CB8',voirie:'#E8620F',armoires:'#B77A12',bornes:'#C13B2A',dae:'#0E8A8A',batiments:'#2F5B7C',signalements:'#E8620F'};
+let mapInst=null, addMode=false;
+
+function buildMap(elId, items, colorKey, onClickItem, onAddPoint){
+  if(mapInst){mapInst.remove();mapInst=null;}
+  const m=L.map(elId).setView(CENTER,15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+  const pts=[];
+  items.forEach(it=>{
+    if(it.lat==null)return;
+    const mk=L.circleMarker([it.lat,it.lng],{radius:8,color:'#fff',weight:2,fillColor:colorKey(it),fillOpacity:.95}).addTo(m);
+    mk.on('click',()=>onClickItem(it));
+    mk.bindTooltip(it.nom||it.ref||it.essence||it.type||it.lieu||it.cat||'');
+    pts.push([it.lat,it.lng]);
+  });
+  if(pts.length)m.fitBounds(pts,{padding:[36,36],maxZoom:17});
+  if(onAddPoint)m.on('click',e=>{if(addMode){addMode=false;document.getElementById(elId).parentElement.classList.remove('addmode');onAddPoint(e.latlng);}});
+  mapInst=m;
+  return m;
+}
+function importGeoJSON(file, cb){
+  const r=new FileReader();
+  r.onload=()=>{try{
+    const gj=JSON.parse(r.result);
+    const feats=(gj.features||[]).filter(f=>f.geometry&&f.geometry.type==='Point');
+    cb(feats.map(f=>({lng:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],props:f.properties||{}})));
+  }catch(e){toast('Fichier GeoJSON invalide');}};
+  r.readAsText(file);
+}
+
+/* Module cartographique générique : carte + saisie point + import QGIS + tableau + fiche */
+function assetModule(cfg){
+  $('#pageTitle').textContent=cfg.title;
+  const list=DB[cfg.key];
+  $('#view').innerHTML=`
+    <div class="map-tools">
+      <button class="btn pri" id="btnAdd">＋ Saisir un point sur la carte</button>
+      <label class="btn" style="margin:0">⬆ Importer GeoJSON (QGIS)<input type="file" id="fileGJ" accept=".geojson,.json" style="display:none"></label>
+      <span class="hint">${cfg.hint||'Export QGIS : couche de points au format GeoJSON (WGS 84 / EPSG:4326).'}</span>
+    </div>
+    <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="assetMap"></div>
+    ${cfg.legend?`<div class="legend">${cfg.legend}</div>`:''}</div></div>
+    <div class="card"><div class="hd"><h2>${cfg.title} — ${list.length} élément(s)</h2><div class="sp"></div>
+      <button class="btn sm" id="btnCsv">Exporter CSV</button></div>
+      <div class="tbl-wrap"><table><thead><tr>${cfg.cols.map(c=>`<th>${c.h}</th>`).join('')}</tr></thead>
+      <tbody>${list.length?list.map(it=>`<tr data-id="${it.id}">${cfg.cols.map(c=>`<td>${c.r(it)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${cfg.cols.length}"><div class="empty">Aucun élément. Saisissez un point sur la carte ou importez un GeoJSON.</div></td></tr>`}</tbody></table></div></div>`;
+  buildMap('assetMap',list,cfg.color,it=>cfg.form(it),latlng=>cfg.form(null,latlng));
+  $('#btnAdd').onclick=()=>{addMode=true;$('#assetMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le point');};
+  $('#fileGJ').onchange=e=>{if(e.target.files[0])importGeoJSON(e.target.files[0],pts=>{
+    pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s)');show(cfg.key);});};
+  $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>cfg.form(list.find(x=>x.id===tr.dataset.id)));
+  $('#btnCsv').onclick=()=>{
+    const rows=[cfg.cols.map(c=>c.h).join(';')].concat(list.map(it=>cfg.cols.map(c=>String(c.r(it)).replace(/<[^>]*>/g,'')).join(';')));
+    const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(rows.join('\n'));
+    a.download=cfg.key+'.csv';a.click();
+  };
+}
+/* Formulaire générique de fiche */
+function assetForm(cfg, it, latlng){
+  const isNew=!it;
+  const v=k=>esc(it?.[k]??cfg.defaults?.[k]??'');
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouvel élément':'Fiche'} — ${cfg.title}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd"><form id="afForm">
+      ${cfg.fields.map(f=>`<div class="field"><label>${f.l}</label>
+        ${f.type==='select'?`<select name="${f.k}">${f.opts.map(o=>`<option ${v(f.k)===o?'selected':''}>${o}</option>`).join('')}</select>`
+        :f.type==='textarea'?`<textarea name="${f.k}" rows="2">${v(f.k)}</textarea>`
+        :`<input name="${f.k}" type="${f.type||'text'}" value="${v(f.k)}">`}</div>`).join('')}
+    </form></div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="afDel">Supprimer</button>'}<div style="flex:1"></div>
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn pri" id="afSave">Enregistrer</button></div>`);
+  $('#afSave').onclick=()=>{
+    const fd=new FormData($('#afForm'));const obj=it||{id:uid(),lat:latlng?.lat,lng:latlng?.lng};
+    cfg.fields.forEach(f=>obj[f.k]=fd.get(f.k));
+    if(isNew)DB[cfg.key].push(obj);
+    save();closeModal();toast('Enregistré');show(cfg.key);
+  };
+  if(!isNew)$('#afDel').onclick=()=>{DB[cfg.key]=DB[cfg.key].filter(x=>x.id!==it.id);save();closeModal();toast('Supprimé');show(cfg.key);};
+}
+</script>
+<script>
+/* ------------------------------ Vues ------------------------------ */
+const VIEWS={};
+
+/* --- Tableau de bord --- */
+VIEWS.dash=()=>{
+  $('#pageTitle').textContent='Tableau de bord';
+  const A=computeAlerts();
+  const k=(n,l,s,go,alert)=>`<div class="kpi ${alert?'alert':''}" onclick="show('${go}')"><div class="n">${n}</div><div class="l">${l}</div><div class="s">${s||''}</div></div>`;
+  $('#view').innerHTML=`
+    <div class="kpis">
+      ${k(A.length,'Alertes actives',A.length?'<span class="badge b-signal">Action requise</span>':'<span class="badge b-ok">RAS</span>','dash',A.length>0)}
+      ${k(DB.signalements.filter(s=>s.statut==='Nouveau').length,'Signalements à traiter','','signalements')}
+      ${k(DB.interventions.filter(i=>i.statut!=='Terminée').length,'Interventions voirie ouvertes','','voirie')}
+      ${k(DB.vehicules.length,'Véhicules & engins','','vehicules')}
+      ${k(DB.dae.length,'Défibrillateurs','','dae')}
+      ${k(DB.arbres.length+DB.mobilier.length+DB.armoires.length+DB.bornes.length,'Points de patrimoine','arbres, mobilier, EP, PI','arbres')}
+      ${k(DB.batiments.reduce((s,b)=>s+(+b.surface||0),0).toLocaleString('fr-FR')+' m²','Surface bâtie gérée',DB.batiments.length+' bâtiments','batiments')}
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="card"><div class="hd"><h2>Alertes & échéances</h2></div><div class="bd">
+        <div class="stripe-band"></div>
+        ${A.length?A.map(a=>`<div class="alert-row" style="cursor:pointer" onclick="show('${a.go}')">
+          <div class="alert-ico" style="background:var(--${a.lvl==='signal'?'signal':a.lvl}-t)">${a.ico}</div>
+          <div><div class="t">${esc(a.t)}</div><div class="d">${esc(a.d)}</div></div></div>`).join('')
+        :'<div class="empty">Aucune alerte. Tout est à jour ✔</div>'}
+      </div></div>
+      <div class="card"><div class="hd"><h2>Derniers signalements citoyens</h2><div class="sp"></div><button class="btn sm" onclick="show('signalements')">Tout voir</button></div><div class="bd">
+        ${DB.signalements.slice(-5).reverse().map(s=>`<div class="alert-row">
+          <div class="alert-ico" style="background:var(--signal-t)">📢</div>
+          <div style="flex:1"><div class="t">${esc(s.cat)}</div><div class="d">${esc(s.desc)}</div><div class="mini">${fmtD(s.date)} ${s.nom?'· '+esc(s.nom):''}</div></div>
+          ${etatBadge(s.statut)}</div>`).join('')||'<div class="empty">Aucun signalement</div>'}
+      </div></div>
+    </div>`;
+};
+
+/* --- Modules cartographiques --- */
+VIEWS.arbres=()=>{const cfg={key:'arbres',title:'Patrimoine arboré',color:it=>({'Bon':'#2E7D52','À surveiller':'#B77A12','Dépérissant':'#C13B2A'})[it.etat]||'#2E7D52',
+  legend:'<span><span class="sw" style="background:#2E7D52"></span>Bon</span><span><span class="sw" style="background:#B77A12"></span>À surveiller</span><span><span class="sw" style="background:#C13B2A"></span>Dépérissant</span>',
+  cols:[{h:'Essence',r:i=>`<b>${esc(i.essence)}</b>`},{h:'Lieu',r:i=>esc(i.lieu)},{h:'Hauteur',r:i=>esc(i.hauteur)},{h:'Plantation',r:i=>esc(i.plantation)},{h:'État',r:i=>etatBadge(i.etat)},{h:'Observations',r:i=>esc(i.note)}],
+  fields:[{k:'essence',l:'Essence'},{k:'lieu',l:'Lieu / adresse'},{k:'hauteur',l:'Hauteur estimée'},{k:'plantation',l:'Année de plantation'},{k:'etat',l:'État sanitaire',type:'select',opts:['Bon','À surveiller','Dépérissant']},{k:'note',l:'Observations',type:'textarea'}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,essence:p.props.essence||p.props.ESSENCE||'À renseigner',lieu:p.props.lieu||p.props.adresse||'',hauteur:p.props.hauteur||'',plantation:p.props.plantation||'',etat:p.props.etat||'Bon',note:''})};
+  cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
+
+VIEWS.mobilier=()=>{const cfg={key:'mobilier',title:'Mobilier urbain',color:it=>({'Bon':'#2E7D52','Dégradé':'#B77A12','À remplacer':'#C13B2A'})[it.etat]||'#7B5CB8',
+  cols:[{h:'Type',r:i=>`<b>${esc(i.type)}</b>`},{h:'Lieu',r:i=>esc(i.lieu)},{h:'Pose',r:i=>esc(i.pose)},{h:'État',r:i=>etatBadge(i.etat)},{h:'Note',r:i=>esc(i.note)}],
+  fields:[{k:'type',l:'Type',type:'select',opts:['Banc','Poubelle','Abribus','Table pique-nique','Jeu enfants','Barrière','Potelet','Panneau affichage','Autre']},{k:'lieu',l:'Lieu'},{k:'pose',l:'Année de pose'},{k:'etat',l:'État',type:'select',opts:['Bon','Dégradé','À remplacer']},{k:'note',l:'Note',type:'textarea'}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,type:p.props.type||'Autre',lieu:p.props.lieu||'',pose:p.props.pose||'',etat:p.props.etat||'Bon',note:''})};
+  cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
+
+VIEWS.armoires=()=>{const cfg={key:'armoires',title:'Éclairage public — armoires de commande',color:it=>it.etat==='Vétuste'?'#C13B2A':'#B77A12',
+  cols:[{h:'Réf.',r:i=>`<b>${esc(i.ref)}</b>`},{h:'Secteur',r:i=>esc(i.lieu)},{h:'Points lumineux',r:i=>esc(i.points)},{h:'Horloge',r:i=>esc(i.horloge)},{h:'Abaissement / extinction',r:i=>esc(i.abaissement)},{h:'État',r:i=>etatBadge(i.etat)}],
+  fields:[{k:'ref',l:'Référence armoire'},{k:'lieu',l:'Secteur desservi'},{k:'points',l:'Nombre de points lumineux',type:'number'},{k:'horloge',l:'Type d’horloge',type:'select',opts:['Astronomique','Mécanique','Cellule crépusculaire','Télégestion']},{k:'abaissement',l:'Abaissement / extinction nocturne'},{k:'etat',l:'État',type:'select',opts:['Bon','Vétuste','Hors service']}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,ref:p.props.ref||p.props.REF||'AEP-?',lieu:p.props.lieu||'',points:p.props.points||'',horloge:p.props.horloge||'Astronomique',abaissement:p.props.abaissement||'',etat:p.props.etat||'Bon'})};
+  cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
+
+VIEWS.bornes=()=>{const cfg={key:'bornes',title:'Défense incendie — poteaux & bornes',color:it=>it.etat==='Conforme'?'#C13B2A':'#7A1F14',
+  hint:'Import compatible avec les exports SDIS / QGIS (points EPSG:4326).',
+  legend:'<span><span class="sw" style="background:#C13B2A"></span>Conforme</span><span><span class="sw" style="background:#7A1F14"></span>Anomalie</span>',
+  cols:[{h:'Réf.',r:i=>`<b>${esc(i.ref)}</b>`},{h:'Lieu',r:i=>esc(i.lieu)},{h:'Ø',r:i=>esc(i.diametre)},{h:'Pression',r:i=>esc(i.pression)},{h:'Dernier contrôle',r:i=>dateBadge(i.controle)},{h:'État',r:i=>etatBadge(i.etat)}],
+  fields:[{k:'ref',l:'Référence (PI/BI)'},{k:'lieu',l:'Lieu'},{k:'diametre',l:'Diamètre'},{k:'pression',l:'Pression mesurée'},{k:'controle',l:'Date du dernier contrôle',type:'date'},{k:'etat',l:'État',type:'select',opts:['Conforme','Débit insuffisant','Hors service']}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,ref:p.props.ref||p.props.numero||'PI-?',lieu:p.props.lieu||'',diametre:p.props.diametre||'',pression:p.props.pression||'',controle:p.props.controle||'',etat:p.props.etat||'Conforme'})};
+  cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
+
+VIEWS.batiments=()=>{const cfg={key:'batiments',title:'Bâtiments communaux',color:()=>'#2F5B7C',
+  cols:[{h:'Bâtiment',r:i=>`<b>${esc(i.nom)}</b>`},{h:'Surface',r:i=>(+i.surface).toLocaleString('fr-FR')+' m²'},{h:'ERP',r:i=>`<span class="badge b-bleu">Type ${esc(i.erpType)} · Cat. ${esc(i.erpCat)}</span>`},{h:'Année',r:i=>esc(i.annee)},{h:'Énergie',r:i=>esc(i.energie)},{h:'Dernière commission sécurité',r:i=>fmtD(i.commission)},{h:'Note',r:i=>esc(i.note)}],
+  fields:[{k:'nom',l:'Nom du bâtiment'},{k:'surface',l:'Surface (m²)',type:'number'},{k:'erpType',l:'Type ERP (J, L, M, N, R, W, X…)'},{k:'erpCat',l:'Catégorie ERP (1 à 5)',type:'select',opts:['1','2','3','4','5','Non ERP']},{k:'annee',l:'Année de construction'},{k:'energie',l:'Énergie de chauffage'},{k:'commission',l:'Dernière commission de sécurité',type:'date'},{k:'note',l:'Notes / travaux',type:'textarea'}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,nom:p.props.nom||'Bâtiment',surface:p.props.surface||0,erpType:p.props.erpType||'',erpCat:p.props.erpCat||'5',annee:'',energie:'',commission:'',note:''})};
+  cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
+
+/* --- Voirie & interventions (avec historique) --- */
+VIEWS.voirie=()=>{const cfg={key:'interventions',title:'Voirie — interventions',
+  color:it=>({'À faire':'#C13B2A','En cours':'#B77A12','Terminée':'#2E7D52'})[it.statut],
+  legend:'<span><span class="sw" style="background:#C13B2A"></span>À faire</span><span><span class="sw" style="background:#B77A12"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminée</span>',
+  cols:[{h:'Type',r:i=>`<b>${esc(i.type)}</b>`},{h:'Voie',r:i=>esc(i.voie)},{h:'Priorité',r:i=>etatBadge2Prio(i.priorite)},{h:'Créée le',r:i=>fmtD(i.cree)},{h:'Statut',r:i=>etatBadge(i.statut)},{h:'Description',r:i=>esc(i.desc)}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,type:p.props.type||'Autre',voie:p.props.voie||'',priorite:'Moyenne',statut:'À faire',cree:today(),desc:p.props.desc||'',histo:[{d:today(),t:'Importée depuis QGIS'}]}),
+  form:(it,ll)=>interForm(it,ll)};
+  assetModule(cfg);};
+function etatBadge2Prio(p){return `<span class="badge ${p==='Haute'?'b-danger':p==='Moyenne'?'b-warn':'b-muted'}">${esc(p)}</span>`;}
+function interForm(it,latlng){
+  const isNew=!it;const v=k=>esc(it?.[k]??'');
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouvelle intervention voirie':'Intervention — '+esc(it.type)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd"><form id="ivForm">
+      <div class="grid2">
+        <div class="field"><label>Type</label><select name="type">${['Nid-de-poule','Marquage au sol','Affaissement','Signalisation','Fauchage / élagage','Réseau pluvial','Trottoir','Autre'].map(o=>`<option ${v('type')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>Voie / desserte</label><input name="voie" value="${v('voie')}"></div>
+        <div class="field"><label>Priorité</label><select name="priorite">${['Haute','Moyenne','Basse'].map(o=>`<option ${v('priorite')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>Statut</label><select name="statut">${['À faire','En cours','Terminée'].map(o=>`<option ${v('statut')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Description</label><textarea name="desc" rows="2">${v('desc')}</textarea></div>
+      ${isNew?'':`<label>Historique</label>
+      <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px;max-height:160px;overflow-y:auto">
+        ${(it.histo||[]).map(h=>`<div style="display:flex;gap:10px;padding:3px 0"><span class="mini" style="white-space:nowrap">${fmtD(h.d)}</span><span>${esc(h.t)}</span></div>`).join('')||'<span class="mini">Aucune entrée</span>'}
+      </div>
+      <div class="field"><label>Ajouter une entrée à l’historique</label><input id="ivHisto" placeholder="ex. Enrobé à froid posé, à reprendre à chaud au printemps"></div>`}
+    </form></div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="ivDel">Supprimer</button>'}<div style="flex:1"></div>
+      <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="ivSave">Enregistrer</button></div>`);
+  $('#ivSave').onclick=()=>{
+    const fd=new FormData($('#ivForm'));
+    const obj=it||{id:uid(),lat:latlng?.lat,lng:latlng?.lng,cree:today(),histo:[{d:today(),t:'Créée'}]};
+    const oldStatut=obj.statut;
+    ['type','voie','priorite','statut','desc'].forEach(k=>obj[k]=fd.get(k));
+    const h=$('#ivHisto')?.value?.trim();if(h)obj.histo.push({d:today(),t:h});
+    if(!isNew&&oldStatut&&oldStatut!==obj.statut)obj.histo.push({d:today(),t:'Statut : '+oldStatut+' → '+obj.statut});
+    if(isNew)DB.interventions.push(obj);
+    save();closeModal();toast('Enregistré');show('voirie');
+  };
+  if(!isNew)$('#ivDel').onclick=()=>{DB.interventions=DB.interventions.filter(x=>x.id!==it.id);save();closeModal();show('voirie');};
+}
+</script>
+<script>
+/* --- Flotte véhicules --- */
+VIEWS.vehicules=()=>{
+  $('#pageTitle').textContent='Flotte véhicules & engins';
+  $('#view').innerHTML=`
+    <div class="map-tools"><button class="btn pri" id="btnVeh">＋ Ajouter un véhicule</button>
+      <span class="hint">Alerte automatique 30 jours avant chaque échéance (CT, révision, assurance).</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr>
+      <th>Véhicule</th><th>Immat.</th><th>Km / heures</th><th>Contrôle technique</th><th>Révision</th><th>Assurance</th><th>Travaux</th></tr></thead>
+      <tbody>${DB.vehicules.map(v=>`<tr data-id="${v.id}">
+        <td><b>${esc(v.nom)}</b><div class="mini">${esc(v.marque)} · ${v.annee}</div></td>
+        <td>${esc(v.immat)}</td><td>${(+v.km).toLocaleString('fr-FR')}</td>
+        <td>${v.ct?dateBadge(v.ct):'<span class="badge b-muted">Non soumis</span>'}</td>
+        <td>${dateBadge(v.revision)}</td><td>${dateBadge(v.assurance)}</td>
+        <td>${v.travaux.length} · ${v.travaux.reduce((s,t)=>s+(+t.cout||0),0)} €</td></tr>`).join('')}</tbody></table></div></div>`;
+  $('#btnVeh').onclick=()=>vehForm(null);
+  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>vehForm(DB.vehicules.find(x=>x.id===tr.dataset.id)));
+};
+function vehForm(v){
+  const isNew=!v;const g=k=>esc(v?.[k]??'');
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouveau véhicule':esc(v.nom)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div class="tabs"><button class="on" data-t="infos">Fiche</button>${isNew?'':'<button data-t="trav">Travaux & entretien</button>'}</div>
+      <div id="vt-infos"><form id="vhForm"><div class="grid2">
+        <div class="field"><label>Nom d’usage</label><input name="nom" value="${g('nom')}" required></div>
+        <div class="field"><label>Immatriculation</label><input name="immat" value="${g('immat')}"></div>
+        <div class="field"><label>Marque / modèle</label><input name="marque" value="${g('marque')}"></div>
+        <div class="field"><label>Année</label><input name="annee" type="number" value="${g('annee')}"></div>
+        <div class="field"><label>Kilométrage / heures</label><input name="km" type="number" value="${g('km')}"></div>
+        <div class="field"><label>Prochain contrôle technique</label><input name="ct" type="date" value="${g('ct')}"></div>
+        <div class="field"><label>Prochaine révision</label><input name="revision" type="date" value="${g('revision')}"></div>
+        <div class="field"><label>Échéance assurance</label><input name="assurance" type="date" value="${g('assurance')}"></div>
+      </div></form></div>
+      ${isNew?'':`<div id="vt-trav" style="display:none">
+        <table style="margin-bottom:14px"><thead><tr><th>Date</th><th>Travaux</th><th>Km</th><th>Coût</th></tr></thead>
+        <tbody>${v.travaux.map(t=>`<tr style="cursor:default"><td>${fmtD(t.d)}</td><td>${esc(t.t)}</td><td>${t.km?(+t.km).toLocaleString('fr-FR'):'—'}</td><td>${t.cout?t.cout+' €':'—'}</td></tr>`).join('')||'<tr><td colspan=4 class="empty">Aucun travail enregistré</td></tr>'}</tbody></table>
+        <div class="grid3">
+          <div class="field"><label>Date</label><input id="twD" type="date" value="${today()}"></div>
+          <div class="field"><label>Km</label><input id="twKm" type="number"></div>
+          <div class="field"><label>Coût (€)</label><input id="twC" type="number"></div>
+        </div>
+        <div class="field"><label>Description des travaux</label><input id="twT" placeholder="ex. Vidange, plaquettes, réparation hayon…"></div>
+        <button class="btn" id="twAdd">＋ Ajouter aux travaux</button>
+      </div>`}
+    </div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="vhDel">Supprimer</button>'}<div style="flex:1"></div>
+      <button class="btn" onclick="closeModal()">Fermer</button><button class="btn pri" id="vhSave">Enregistrer</button></div>`);
+  document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    $('#vt-infos').style.display=b.dataset.t==='infos'?'block':'none';
+    if($('#vt-trav'))$('#vt-trav').style.display=b.dataset.t==='trav'?'block':'none';});
+  if(!isNew&&$('#twAdd'))$('#twAdd').onclick=()=>{
+    if(!$('#twT').value.trim())return toast('Décrivez les travaux');
+    v.travaux.unshift({d:$('#twD').value,t:$('#twT').value,km:$('#twKm').value,cout:$('#twC').value});
+    save();toast('Travaux ajoutés');vehForm(v);document.querySelector('[data-t=trav]').click();};
+  $('#vhSave').onclick=()=>{
+    const fd=new FormData($('#vhForm'));const obj=v||{id:uid(),travaux:[]};
+    ['nom','immat','marque','annee','km','ct','revision','assurance'].forEach(k=>obj[k]=fd.get(k)||null);
+    if(isNew)DB.vehicules.push(obj);
+    save();closeModal();toast('Enregistré');show('vehicules');};
+  if(!isNew)$('#vhDel').onclick=()=>{DB.vehicules=DB.vehicules.filter(x=>x.id!==v.id);save();closeModal();show('vehicules');};
+}
+
+/* --- Défibrillateurs --- */
+VIEWS.dae=()=>{const cfg={key:'dae',title:'Défibrillateurs (DAE)',
+  color:it=>Math.min(daysTo(it.electrodes),daysTo(it.batterie))<0?'#C13B2A':Math.min(daysTo(it.electrodes),daysTo(it.batterie))<=30?'#B77A12':'#0E8A8A',
+  hint:'Alerte automatique 1 mois avant péremption des électrodes et de la batterie.',
+  legend:'<span><span class="sw" style="background:#0E8A8A"></span>OK</span><span><span class="sw" style="background:#B77A12"></span>Péremption ≤ 30 j</span><span><span class="sw" style="background:#C13B2A"></span>Périmé</span>',
+  cols:[{h:'Emplacement',r:i=>`<b>${esc(i.lieu)}</b>`},{h:'Modèle',r:i=>esc(i.modele)},{h:'Électrodes',r:i=>dateBadge(i.electrodes)},{h:'Batterie',r:i=>dateBadge(i.batterie)},{h:'Dernière vérification',r:i=>fmtD(i.controle)}],
+  fields:[{k:'lieu',l:'Emplacement'},{k:'modele',l:'Modèle'},{k:'electrodes',l:'Péremption électrodes',type:'date'},{k:'batterie',l:'Péremption batterie',type:'date'},{k:'controle',l:'Dernière vérification',type:'date'}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,lieu:p.props.lieu||'DAE',modele:p.props.modele||'',electrodes:p.props.electrodes||'',batterie:p.props.batterie||'',controle:''})};
+  cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
+
+/* --- Signalements (côté services) --- */
+VIEWS.signalements=()=>{
+  $('#pageTitle').textContent='Signalements citoyens';
+  const list=DB.signalements.slice().reverse();
+  $('#view').innerHTML=`
+    <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="sigMap" style="height:360px"></div></div></div>
+    <div class="card"><div class="hd"><h2>${list.length} signalement(s)</h2></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Catégorie</th><th>Description</th><th>Contact</th><th>Statut</th><th>Actions</th></tr></thead>
+    <tbody>${list.map(s=>`<tr>
+      <td>${fmtD(s.date)}</td><td><b>${esc(s.cat)}</b></td><td>${esc(s.desc)}</td>
+      <td>${esc(s.nom)}<div class="mini">${esc(s.contact)}</div></td><td>${etatBadge(s.statut)}</td>
+      <td style="white-space:nowrap">
+        ${s.statut!=='Traité'?`<button class="btn sm" data-next="${s.id}">${s.statut==='Nouveau'?'Prendre en charge':'Marquer traité'}</button>`:''}
+        ${s.lat?`<button class="btn sm" data-inter="${s.id}">→ Intervention voirie</button>`:''}
+      </td></tr>`).join('')||'<tr><td colspan=6><div class="empty">Aucun signalement</div></td></tr>'}</tbody></table></div></div>`;
+  buildMap('sigMap',DB.signalements,s=>s.statut==='Nouveau'?'#E8620F':s.statut==='En cours'?'#B77A12':'#2E7D52',()=>{});
+  $('#view').querySelectorAll('[data-next]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+    const s=DB.signalements.find(x=>x.id===b.dataset.next);
+    s.statut=s.statut==='Nouveau'?'En cours':'Traité';save();show('signalements');});
+  $('#view').querySelectorAll('[data-inter]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+    const s=DB.signalements.find(x=>x.id===b.dataset.inter);
+    DB.interventions.push({id:uid(),lat:s.lat,lng:s.lng,type:'Autre',voie:'',priorite:'Moyenne',statut:'À faire',cree:today(),
+      desc:'[Signalement citoyen] '+s.desc,histo:[{d:today(),t:'Créée depuis un signalement citoyen'}]});
+    s.statut='En cours';save();toast('Intervention voirie créée');show('voirie');});
+};
+
+/* --- Administration clients --- */
+VIEWS.admin=()=>{
+  $('#pageTitle').textContent='Clients & abonnements';
+  $('#view').innerHTML=`
+    <div class="kpis">
+      <div class="kpi"><div class="n">${DB.clients.length}</div><div class="l">Communes clientes</div></div>
+      <div class="kpi"><div class="n">${DB.clients.filter(c=>c.abo==='actif').length}</div><div class="l">Abonnements actifs</div></div>
+      <div class="kpi"><div class="n">${DB.clients.filter(c=>c.abo==='essai').length}</div><div class="l">En période d’essai</div></div>
+    </div>
+    <div class="map-tools"><button class="btn pri" id="btnCli">＋ Nouvelle commune cliente</button>
+      <span class="hint">En production : la création du compte déclenche l’envoi d’un lien de paiement Stripe et la création de l’utilisateur Firebase.</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr>
+      <th>Code client</th><th>Commune</th><th>Contact</th><th>Formule</th><th>Abonnement</th><th>Échéance</th></tr></thead>
+      <tbody>${DB.clients.map(c=>`<tr data-id="${c.id}">
+        <td><b>${esc(c.code)}</b></td><td>${esc(c.commune)}</td><td>${esc(c.contact)}</td><td>${esc(c.plan)}</td>
+        <td>${etatBadge(c.abo)}</td><td>${dateBadge(c.echeance)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  $('#btnCli').onclick=()=>cliForm(null);
+  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>cliForm(DB.clients.find(x=>x.id===tr.dataset.id)));
+};
+function cliForm(c){
+  const isNew=!c;const g=k=>esc(c?.[k]??'');
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouvelle commune cliente':esc(c.commune)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd"><form id="clForm"><div class="grid2">
+      <div class="field"><label>Code client</label><input name="code" value="${g('code')}" required></div>
+      <div class="field"><label>Commune</label><input name="commune" value="${g('commune')}" required></div>
+      <div class="field"><label>Email de contact</label><input name="contact" type="email" value="${g('contact')}"></div>
+      <div class="field"><label>Mot de passe ${isNew?'':'(laisser vide pour conserver)'}</label><input name="pwd" type="text"></div>
+      <div class="field"><label>Formule</label><select name="plan">${['Essai gratuit 30 j','Commune < 2 000 hab.','Commune < 5 000 hab.','Commune < 10 000 hab.','Commune 10 000+ hab.'].map(o=>`<option ${g('plan')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      <div class="field"><label>Statut abonnement</label><select name="abo">${['essai','actif','suspendu'].map(o=>`<option ${g('abo')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      <div class="field"><label>Échéance</label><input name="echeance" type="date" value="${g('echeance')}"></div>
+    </div></form>
+    <p class="mini">💳 Stripe : le statut passera automatiquement à « actif » à réception du webhook <code>invoice.paid</code>, et « suspendu » après échec de paiement.</p></div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="clDel">Supprimer</button>'}<div style="flex:1"></div>
+      <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="clSave">Enregistrer</button></div>`);
+  $('#clSave').onclick=()=>{
+    const fd=new FormData($('#clForm'));const obj=c||{id:uid(),pwd:'demo'};
+    ['code','commune','contact','plan','abo','echeance'].forEach(k=>obj[k]=fd.get(k));
+    if(fd.get('pwd'))obj.pwd=fd.get('pwd');
+    if(isNew)DB.clients.push(obj);
+    save();closeModal();toast('Client enregistré');show('admin');};
+  if(!isNew)$('#clDel').onclick=()=>{DB.clients=DB.clients.filter(x=>x.id!==c.id);save();closeModal();show('admin');};
+}
+
+/* --- Paramètres & intégrations --- */
+VIEWS.params=()=>{
+  $('#pageTitle').textContent='Paramètres & intégrations';
+  $('#view').innerHTML=`
+    <div class="grid2" style="align-items:start">
+      <div class="card"><div class="hd"><h2>🔥 Firebase (comptes & données)</h2></div><div class="bd">
+        <p style="margin-bottom:10px">Statut : <span class="badge ${FIREBASE_CONFIG?'b-ok':'b-warn'}">${FIREBASE_CONFIG?'Connecté':'Mode démo (données en mémoire)'}</span></p>
+        <p class="mini" style="margin-bottom:10px">Pour passer en production :</p>
+        <ol style="padding-left:18px;font-size:13px;line-height:1.9">
+          <li>Créer un projet sur console.firebase.google.com</li>
+          <li>Activer <b>Authentication</b> (email/mot de passe) et <b>Cloud Firestore</b></li>
+          <li>Coller la configuration dans la constante <code>FIREBASE_CONFIG</code> du fichier index.html</li>
+          <li>Définir les règles Firestore : chaque client ne lit/écrit que <code>/clients/{codeClient}/…</code></li>
+          <li>Remplacer les fonctions <code>save()</code>/<code>load()</code> par les appels Firestore (voir README)</li>
+        </ol>
+      </div></div>
+      <div class="card"><div class="hd"><h2>💳 Stripe (abonnements)</h2></div><div class="bd">
+        <p style="margin-bottom:10px">Statut : <span class="badge ${STRIPE_PAYMENT_LINK?'b-ok':'b-warn'}">${STRIPE_PAYMENT_LINK?'Configuré':'Non configuré'}</span></p>
+        <p class="mini" style="margin-bottom:10px">Architecture recommandée (GitHub Pages = site statique, la partie paiement passe par Stripe et une Cloud Function) :</p>
+        <ol style="padding-left:18px;font-size:13px;line-height:1.9">
+          <li>Créer les produits/tarifs dans Stripe (abonnement annuel par strate de commune)</li>
+          <li>Utiliser des <b>Payment Links</b> ou Stripe Checkout pour l’encaissement</li>
+          <li>Déployer une <b>Cloud Function Firebase</b> qui reçoit les webhooks Stripe (<code>invoice.paid</code>, <code>customer.subscription.deleted</code>) et met à jour le statut du client dans Firestore</li>
+          <li>À la connexion, l’app vérifie <code>abo === 'actif'</code> ou <code>'essai'</code> avant d’ouvrir l’accès</li>
+        </ol>
+      </div></div>
+    </div>
+    <div class="card" style="margin-top:18px"><div class="hd"><h2>Sauvegarde locale</h2></div><div class="bd">
+      <button class="btn" id="btnExport">⬇ Exporter toutes les données (JSON)</button>
+      <label class="btn" style="margin-left:8px">⬆ Restaurer un export<input type="file" id="fileImp" accept=".json" style="display:none"></label>
+      <p class="mini" style="margin-top:8px">En mode démo, exportez régulièrement vos données : elles ne sont pas conservées entre deux sessions tant que Firebase n’est pas branché.</p>
+    </div></div>`;
+  $('#btnExport').onclick=()=>{
+    const a=document.createElement('a');
+    a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(DB,null,2));
+    a.download='citypilot-export-'+today()+'.json';a.click();};
+  $('#fileImp').onchange=e=>{const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();r.onload=()=>{try{Object.assign(DB,JSON.parse(r.result));toast('Données restaurées');show('dash');}catch{toast('Fichier invalide');}};r.readAsText(f);};
+};
+
+/* ------------------------------ Authentification ------------------------------ */
+$('#loginForm').onsubmit=e=>{
+  e.preventDefault();
+  const code=$('#loginCode').value.trim().toUpperCase(), pwd=$('#loginPwd').value;
+  if(code==='ADMIN'&&pwd==='admin'){session={type:'admin'};boot('admin');return;}
+  const c=DB.clients.find(x=>x.code===code&&x.pwd===pwd);
+  if(!c)return toast('Code client ou mot de passe incorrect');
+  if(c.abo==='suspendu')return toast('Abonnement suspendu — contactez le support');
+  session={type:'client',client:c};boot('dash');
+};
+function boot(v){
+  $('#loginScreen').style.display='none';$('#publicScreen').style.display='none';
+  $('#app').classList.add('on');
+  $('#sbCommune').textContent=session.type==='admin'?'Console administrateur':session.client.commune;
+  $('#sbUser').textContent=session.type==='admin'?'ADMIN':session.client.code;
+  show(v);
+}
+$('#btnLogout').onclick=()=>{session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';};
+$('#btnBell').onclick=()=>show(session?.type==='admin'?'admin':'dash');
+
+/* ------------------------------ Espace citoyen ------------------------------ */
+let pubLatLng=null,pubMap=null,pubMarker=null;
+$('#lnkPublic').onclick=()=>{
+  $('#loginScreen').style.display='none';$('#publicScreen').style.display='block';
+  if(!pubMap){
+    pubMap=L.map('pubMap').setView(CENTER,15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(pubMap);
+    pubMap.on('click',e=>{pubLatLng=e.latlng;
+      if(pubMarker)pubMarker.setLatLng(e.latlng);
+      else pubMarker=L.marker(e.latlng).addTo(pubMap);});
+  }else setTimeout(()=>pubMap.invalidateSize(),100);
+};
+$('#lnkAdmin').onclick=()=>{$('#loginCode').value='ADMIN';$('#loginPwd').focus();};
+$('#pubBack').onclick=()=>{$('#publicScreen').style.display='none';$('#loginScreen').style.display='flex';};
+$('#pubSend').onclick=()=>{
+  const desc=$('#pubDesc').value.trim();
+  if(!desc)return toast('Merci de décrire le problème');
+  DB.signalements.push({id:uid(),lat:pubLatLng?.lat??null,lng:pubLatLng?.lng??null,
+    cat:$('#pubCat').value,desc,nom:$('#pubNom').value,contact:$('#pubContact').value,date:today(),statut:'Nouveau'});
+  save();
+  $('#pubDesc').value='';$('#pubNom').value='';$('#pubContact').value='';
+  if(pubMarker){pubMap.removeLayer(pubMarker);pubMarker=null;pubLatLng=null;}
+  toast('Signalement envoyé — merci ! Les services techniques ont été alertés.');
+};
+</script>
+</body>
+</html>
