@@ -166,6 +166,10 @@ tbody tr{cursor:pointer}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
+<!-- SDK Firebase (compat) : Auth + Firestore -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -177,8 +181,8 @@ tbody tr{cursor:pointer}
       <div class="logo">City<em>Pilot</em></div>
       <p class="login-sub">Gestion du patrimoine communal &amp; services techniques</p>
       <form id="loginForm">
-        <div class="field"><label for="loginCode">Code client</label>
-          <input id="loginCode" autocomplete="username" placeholder="ex. VALMONT37" required></div>
+        <div class="field"><label for="loginCode">Identifiant ou e-mail</label>
+          <input id="loginCode" autocomplete="username" placeholder="ex. agent@commune.fr" required></div>
         <div class="field"><label for="loginPwd">Mot de passe</label>
           <input id="loginPwd" type="password" autocomplete="current-password" required></div>
         <button class="btn pri" style="width:100%;justify-content:center;padding:11px">Se connecter</button>
@@ -273,7 +277,15 @@ tbody tr{cursor:pointer}
    ===================================================================== */
 
 /* ---------- Configuration Firebase / Stripe (à remplir en prod) ---------- */
-const FIREBASE_CONFIG = null; /* ex: { apiKey:"...", authDomain:"...", projectId:"..." } */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAN2a0LmXC8UAyTFs79f4PlO1uk0k8POrs",
+  authDomain: "citypilot-f6cc2.firebaseapp.com",
+  projectId: "citypilot-f6cc2",
+  storageBucket: "citypilot-f6cc2.firebasestorage.app",
+  messagingSenderId: "204892295551",
+  appId: "1:204892295551:web:559471b53392e7f951ca4a",
+  measurementId: "G-SX8GGHYMY4"
+};
 const STRIPE_PAYMENT_LINK = null; /* lien de paiement Stripe (abonnement) */
 
 const CENTER = [47.302, 0.752]; // commune de démonstration
@@ -374,6 +386,24 @@ const DB = {
   ],
 };
 let session = null; // {type:'client'|'admin', client}
+
+/* ====================== Intégration Firebase ======================
+   Étape A : authentification réelle via Firebase Auth.
+   Étape B (à venir) : persistance Firestore module par module.
+   Si Firebase est indisponible, l'app bascule en mode démo (mémoire). */
+let FB = { ready:false, auth:null, db:null, mode:'demo' };
+function initFirebase(){
+  if(!FIREBASE_CONFIG || typeof firebase==='undefined'){ FB.mode='demo'; return; }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    FB.auth = firebase.auth();
+    FB.db = firebase.firestore();
+    FB.ready = true; FB.mode='firebase';
+    // Instance secondaire pour créer des comptes sans déconnecter l'admin (Option 1)
+    FB.secondary = firebase.initializeApp(FIREBASE_CONFIG, 'secondary');
+  }catch(e){ console.warn('Firebase init échouée, mode démo :', e); FB.mode='demo'; }
+}
+initFirebase();
 
 /* Persistance : en mode démo les données restent en mémoire.
    En production, remplacer save()/load() par Firestore (voir Paramètres). */
@@ -953,7 +983,7 @@ VIEWS.params=()=>{
   $('#view').innerHTML=`
     <div class="grid2" style="align-items:start">
       <div class="card"><div class="hd"><h2>🔥 Firebase (comptes & données)</h2></div><div class="bd">
-        <p style="margin-bottom:10px">Statut : <span class="badge ${FIREBASE_CONFIG?'b-ok':'b-warn'}">${FIREBASE_CONFIG?'Connecté':'Mode démo (données en mémoire)'}</span></p>
+        <p style="margin-bottom:10px">Statut : <span class="badge ${FB.mode==='firebase'?'b-ok':'b-warn'}">${FB.mode==='firebase'?'Connecté (Auth active · persistance Firestore en cours d\'intégration)':'Mode démo (données en mémoire)'}</span></p>
         <p class="mini" style="margin-bottom:10px">Pour passer en production :</p>
         <ol style="padding-left:18px;font-size:13px;line-height:1.9">
           <li>Créer un projet sur console.firebase.google.com</li>
@@ -1144,36 +1174,76 @@ function backFromLegal(from){
 }
 
 /* ------------------------------ Authentification ------------------------------ */
-$('#loginForm').onsubmit=e=>{
+$('#loginForm').onsubmit=async e=>{
   e.preventDefault();
   const raw=$('#loginCode').value.trim(), code=raw.toUpperCase(), pwd=$('#loginPwd').value;
+  const looksLikeEmail=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw);
+
+  // 1) Connexion Firebase si c'est un e-mail et que Firebase est prêt
+  if(looksLikeEmail && FB.mode==='firebase'){
+    const btn=$('#loginForm button'); const old=btn.textContent; btn.textContent='Connexion…'; btn.disabled=true;
+    try{
+      const cred=await FB.auth.signInWithEmailAndPassword(raw, pwd);
+      const prof=await loadUserProfile(cred.user);
+      if(!prof){ await FB.auth.signOut(); toast('Compte sans profil associé — contactez l\'administrateur'); return; }
+      if(prof.user.actif===false){ await FB.auth.signOut(); toast('Ce compte est désactivé'); return; }
+      if(prof.client && prof.client.abo==='suspendu'){ await FB.auth.signOut(); toast('Abonnement suspendu — contactez le support'); return; }
+      session={type:prof.type, client:prof.client, user:prof.user, role:prof.role, uid:cred.user.uid, email:raw};
+      boot(prof.type==='admin'?'admin':'dash'); return;
+    }catch(err){
+      const map={'auth/invalid-credential':'E-mail ou mot de passe incorrect','auth/user-not-found':'Aucun compte pour cet e-mail','auth/wrong-password':'Mot de passe incorrect','auth/too-many-requests':'Trop de tentatives, réessayez plus tard','auth/invalid-email':'E-mail invalide'};
+      toast(map[err.code]||('Erreur de connexion : '+(err.code||err.message))); return;
+    }finally{ btn.textContent=old; btn.disabled=false; }
+  }
+
+  // 2) Repli mode démo (identifiants locaux)
   if(code==='ADMIN'&&pwd==='admin'){session={type:'admin'};boot('admin');return;}
-  // Recherche d'un utilisateur nominatif (identifiant insensible à la casse) dans toutes les communes
   let found=null;
   for(const c of DB.clients){
     const u=(c.users||[]).find(u=>u.ident.toLowerCase()===raw.toLowerCase()&&u.pwd===pwd);
     if(u){found={client:c,user:u};break;}
   }
-  // Rétrocompatibilité : ancien couple code commune / mot de passe commune
   if(!found){
     const c=DB.clients.find(x=>x.code===code&&x.pwd===pwd);
     if(c){const u=(c.users||[]).find(u=>u.role==='admin')||{nom:c.commune,role:'admin',ident:c.code};found={client:c,user:u};}
   }
-  if(!found)return toast('Identifiant ou mot de passe incorrect');
+  if(!found){
+    if(looksLikeEmail && FB.mode!=='firebase') return toast('Connexion e-mail indisponible (Firebase non joignable)');
+    return toast('Identifiant ou mot de passe incorrect');
+  }
   if(!found.user.actif&&found.user.actif!==undefined)return toast('Ce compte utilisateur est désactivé');
   if(found.client.abo==='suspendu')return toast('Abonnement suspendu — contactez le support');
   session={type:'client',client:found.client,user:found.user,role:found.user.role};
   boot('dash');
 };
+
+/* Charge le profil (commune, rôle) d'un utilisateur Firebase depuis Firestore.
+   Structure attendue : collection "users" / doc {uid} = {communeId, role, nom, actif}
+   puis collection "communes" / doc {communeId}. Repli : profil admin plateforme
+   si le doc users porte role:'platform'. */
+async function loadUserProfile(fbUser){
+  try{
+    const uref=await FB.db.collection('users').doc(fbUser.uid).get();
+    if(!uref.exists) return null;
+    const u=uref.data();
+    if(u.role==='platform') return {type:'admin', user:{nom:u.nom||'Administrateur', ident:fbUser.email}, role:'platform'};
+    let client=null;
+    if(u.communeId){
+      const cref=await FB.db.collection('communes').doc(u.communeId).get();
+      if(cref.exists) client={id:cref.id, ...cref.data()};
+    }
+    return {type:'client', client, user:{id:fbUser.uid, nom:u.nom||fbUser.email, ident:fbUser.email, actif:u.actif}, role:u.role||'agent'};
+  }catch(e){ console.warn('loadUserProfile', e); return null; }
+}
 function boot(v){
   $('#loginScreen').style.display='none';$('#publicScreen').style.display='none';
   $('#app').classList.add('on');
-  $('#sbCommune').textContent=session.type==='admin'?'Console administrateur':session.client.commune;
+  $('#sbCommune').textContent=session.type==='admin'?'Console administrateur':(session.client?session.client.commune:'Commune non rattachée');
   $('#sbUser').textContent=session.type==='admin'?'ADMIN'
-    :`${session.user.nom||session.client.code}\u00A0· ${session.role==='admin'?'Admin communal':'Agent'}`;
+    :`${session.user.nom||(session.client&&session.client.code)||session.email||'Utilisateur'}\u00A0· ${session.role==='admin'?'Admin communal':'Agent'}`;
   show(v);
 }
-$('#btnLogout').onclick=()=>{session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';};
+$('#btnLogout').onclick=()=>{if(FB.mode==='firebase'&&FB.auth.currentUser)FB.auth.signOut();session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';};
 $('#btnBell').onclick=()=>show(session?.type==='admin'?'admin':'dash');
 
 /* ------------------------------ Espace citoyen ------------------------------ */
