@@ -187,7 +187,7 @@ tbody tr{cursor:pointer}
         <a id="lnkPublic">Espace citoyen · signaler un problème</a>
         <a id="lnkAdmin">Administration</a>
       </div>
-      <div class="demo-hint">Démo — client : <b>VALMONT37</b> / <b>demo</b> · admin : <b>ADMIN</b> / <b>admin</b></div>
+      <div class="demo-hint">Démo — Admin communal : <b>VALMONT37</b> / <b>demo</b> · Agent : <b>j.martin</b> / <b>agent</b> · Admin plateforme : <b>ADMIN</b> / <b>admin</b></div>
       <p class="mini" style="text-align:center;margin-top:14px">
         <a class="link" onclick="showLegal('mentions','login')">Mentions légales</a> ·
         <a class="link" onclick="showLegal('confidentialite','login')">Confidentialité</a>
@@ -288,9 +288,17 @@ const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>
 const DB = {
   clients: [
     {id:'c1', code:'VALMONT37', pwd:'demo', commune:'Valmont-sur-Cère', contact:'st@valmont.fr',
-     abo:'actif', echeance:addDays(today(),212), plan:'Commune < 5 000 hab.'},
+     abo:'actif', echeance:addDays(today(),212), plan:'Commune < 5 000 hab.',
+     users:[
+       {id:uid(), ident:'VALMONT37', nom:'Direction des services techniques', role:'admin', pwd:'demo', actif:true},
+       {id:uid(), ident:'j.martin', nom:'Julien Martin', role:'agent', pwd:'agent', actif:true},
+       {id:uid(), ident:'s.dubois', nom:'Sophie Dubois', role:'agent', pwd:'agent', actif:false},
+     ]},
     {id:'c2', code:'STMARTIN', pwd:'demo', commune:'Saint-Martin-le-Bourg', contact:'mairie@stmartin.fr',
-     abo:'essai', echeance:addDays(today(),12), plan:'Essai gratuit 30 j'},
+     abo:'essai', echeance:addDays(today(),12), plan:'Essai gratuit 30 j',
+     users:[
+       {id:uid(), ident:'STMARTIN', nom:'Secrétariat de mairie', role:'admin', pwd:'demo', actif:true},
+     ]},
   ],
   arbres: [
     {id:uid(), lat:47.3035, lng:0.7508, essence:'Platane commun', hauteur:'18 m', etat:'Bon', plantation:'1962', lieu:'Place de la Mairie', note:''},
@@ -451,6 +459,7 @@ const NAV = [
   {id:'vehicules', label:'Flotte véhicules', ico:'truck', cnt:()=>DB.vehicules.filter(v=>(v.ct&&daysTo(v.ct)<=30)||(v.revision&&daysTo(v.revision)<=30)).length},
   {id:'batiments', label:'Bâtiments', ico:'home'},
   {sec:'Compte'},
+  {id:'users', label:'Utilisateurs', ico:'users', role:'admin'},
   {id:'rgpd', label:'Confidentialité & RGPD', ico:'shield'},
   {id:'params', label:'Paramètres & intégrations', ico:'gear'},
 ];
@@ -458,7 +467,7 @@ const NAV_ADMIN = [{sec:'Administration'},{id:'admin',label:'Clients & abonnemen
 
 function renderNav(){
   const items = session.type==='admin'?NAV_ADMIN:NAV;
-  $('#mainNav').innerHTML = items.map(n=>{
+  $('#mainNav').innerHTML = items.filter(n=>!n.role||n.role===session.role).map(n=>{
     if(n.sec)return `<div class="nav-sec">${n.sec}</div>`;
     const c=n.cnt?n.cnt():0;
     return `<a href="#${n.id}" data-v="${n.id}">${ICONS[n.ico]||''}<span>${n.label}</span>${c?`<span class="cnt">${c}</span>`:''}</a>`;
@@ -859,10 +868,10 @@ VIEWS.admin=()=>{
     <div class="map-tools"><button class="btn pri" id="btnCli">＋ Nouvelle commune cliente</button>
       <span class="hint">En production : la création du compte déclenche l’envoi d’un lien de paiement Stripe et la création de l’utilisateur Firebase.</span></div>
     <div class="card"><div class="tbl-wrap"><table><thead><tr>
-      <th>Code client</th><th>Commune</th><th>Contact</th><th>Formule</th><th>Abonnement</th><th>Échéance</th></tr></thead>
+      <th>Code client</th><th>Commune</th><th>Contact</th><th>Formule</th><th>Utilisateurs</th><th>Abonnement</th><th>Échéance</th></tr></thead>
       <tbody>${DB.clients.map(c=>`<tr data-id="${c.id}">
         <td><b>${esc(c.code)}</b></td><td>${esc(c.commune)}</td><td>${esc(c.contact)}</td><td>${esc(c.plan)}</td>
-        <td>${etatBadge(c.abo)}</td><td>${dateBadge(c.echeance)}</td></tr>`).join('')}</tbody></table></div></div>`;
+        <td>${(c.users||[]).length} 👤</td><td>${etatBadge(c.abo)}</td><td>${dateBadge(c.echeance)}</td></tr>`).join('')}</tbody></table></div></div>`;
   $('#btnCli').onclick=()=>cliForm(null);
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>cliForm(DB.clients.find(x=>x.id===tr.dataset.id)));
 };
@@ -874,21 +883,68 @@ function cliForm(c){
       <div class="field"><label>Code client</label><input name="code" value="${g('code')}" required></div>
       <div class="field"><label>Commune</label><input name="commune" value="${g('commune')}" required></div>
       <div class="field"><label>Email de contact</label><input name="contact" type="email" value="${g('contact')}"></div>
-      <div class="field"><label>Mot de passe ${isNew?'':'(laisser vide pour conserver)'}</label><input name="pwd" type="text"></div>
+      <div class="field"><label>Mot de passe admin ${isNew?'initial':'(laisser vide pour conserver)'}</label><input name="pwd" type="text"></div>
       <div class="field"><label>Formule</label><select name="plan">${['Essai gratuit 30 j','Commune < 2 000 hab.','Commune < 5 000 hab.','Commune < 10 000 hab.','Commune 10 000+ hab.'].map(o=>`<option ${g('plan')===o?'selected':''}>${o}</option>`).join('')}</select></div>
       <div class="field"><label>Statut abonnement</label><select name="abo">${['essai','actif','suspendu'].map(o=>`<option ${g('abo')===o?'selected':''}>${o}</option>`).join('')}</select></div>
       <div class="field"><label>Échéance</label><input name="echeance" type="date" value="${g('echeance')}"></div>
     </div></form>
-    <p class="mini">💳 Stripe : le statut passera automatiquement à « actif » à réception du webhook <code>invoice.paid</code>, et « suspendu » après échec de paiement.</p></div>
+    <p class="mini">💳 Stripe : le statut passera automatiquement à « actif » à réception du webhook <code>invoice.paid</code>, et « suspendu » après échec de paiement.</p>
+    ${isNew?'<p class="mini">Un premier utilisateur « Admin communal » sera créé avec le code client et le mot de passe ci-dessus. Vous pourrez ensuite ajouter des agents.</p>':`<div id="cliUsers" style="margin-top:16px"></div>`}
+    </div>
     <div class="ft">${isNew?'':'<button class="btn dngr" id="clDel">Supprimer</button>'}<div style="flex:1"></div>
       <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="clSave">Enregistrer</button></div>`);
+  if(!isNew){
+    const renderCliUsers=()=>{$('#cliUsers').innerHTML=usersTable(c,true);
+      bindUsersTableModal($('#cliUsers'),c,renderCliUsers);};
+    renderCliUsers();
+  }
   $('#clSave').onclick=()=>{
-    const fd=new FormData($('#clForm'));const obj=c||{id:uid(),pwd:'demo'};
+    const fd=new FormData($('#clForm'));const obj=c||{id:uid(),pwd:'demo',users:[]};
     ['code','commune','contact','plan','abo','echeance'].forEach(k=>obj[k]=fd.get(k));
     if(fd.get('pwd'))obj.pwd=fd.get('pwd');
-    if(isNew)DB.clients.push(obj);
+    if(isNew){
+      obj.users=[{id:uid(),ident:obj.code,nom:'Admin communal — '+obj.commune,role:'admin',pwd:obj.pwd,actif:true}];
+      DB.clients.push(obj);
+    }
     save();closeModal();toast('Client enregistré');show('admin');};
   if(!isNew)$('#clDel').onclick=()=>{DB.clients=DB.clients.filter(x=>x.id!==c.id);save();closeModal();show('admin');};
+}
+/* Variante de liaison qui re-render dans la modale (au lieu de changer de vue) */
+function bindUsersTableModal(scope, client, rerender){
+  scope.querySelectorAll('[data-adduser]').forEach(b=>b.onclick=()=>userFormModal(client,null,rerender));
+  scope.querySelectorAll('[data-edituser]').forEach(b=>b.onclick=()=>{
+    const [,uid_]=b.dataset.edituser.split(':');userFormModal(client,(client.users||[]).find(u=>u.id===uid_),rerender);});
+}
+function userFormModal(client,u,rerender){
+  // réutilise userForm mais recharge la fiche client ensuite
+  const isNew=!u;const v=k=>esc(u?.[k]??'');
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouvel utilisateur':esc(u.nom||u.ident)} — ${esc(client.commune)}</h2><button class="btn ghost" onclick="cliForm(DB.clients.find(x=>x.id==='${client.id}'))">✕</button></div>
+    <div class="bd"><form id="umForm"><div class="grid2">
+      <div class="field"><label>Identifiant</label><input name="ident" value="${v('ident')}" placeholder="ex. j.martin" required></div>
+      <div class="field"><label>Nom / fonction</label><input name="nom" value="${v('nom')}"></div>
+      <div class="field"><label>Rôle</label><select name="role">
+        <option value="admin" ${v('role')==='admin'?'selected':''}>Admin communal</option>
+        <option value="agent" ${v('role')==='agent'||isNew?'selected':''}>Agent</option></select></div>
+      <div class="field"><label>Mot de passe ${isNew?'':'(vide = inchangé)'}</label><input name="pwd" type="text"></div>
+    </div>
+    <label class="consent" style="color:var(--ink)"><input type="checkbox" name="actif" ${u?.actif!==false?'checked':''}><span>Compte actif</span></label>
+    </form></div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="umDel">Supprimer</button>'}<div style="flex:1"></div>
+      <button class="btn" onclick="cliForm(DB.clients.find(x=>x.id==='${client.id}'))">Retour</button>
+      <button class="btn pri" id="umSave">Enregistrer</button></div>`);
+  $('#umSave').onclick=()=>{
+    const fd=new FormData($('#umForm'));const ident=fd.get('ident').trim();
+    if(!ident)return toast('Identifiant requis');
+    if(!client.users)client.users=[];
+    if(client.users.find(x=>x.ident.toLowerCase()===ident.toLowerCase()&&(!u||x.id!==u.id)))return toast('Identifiant déjà utilisé');
+    const obj=u||{id:uid()};obj.ident=ident;obj.nom=fd.get('nom');obj.role=fd.get('role');obj.actif=fd.get('actif')==='on';
+    if(fd.get('pwd'))obj.pwd=fd.get('pwd');else if(isNew)obj.pwd='changeme';
+    if(isNew)client.users.push(obj);
+    save();toast('Utilisateur enregistré');cliForm(DB.clients.find(x=>x.id===client.id));};
+  if(!isNew)$('#umDel').onclick=()=>{
+    if((client.users||[]).filter(x=>x.role==='admin').length<=1&&u.role==='admin')return toast('Gardez au moins un admin communal');
+    client.users=client.users.filter(x=>x.id!==u.id);save();toast('Supprimé');cliForm(DB.clients.find(x=>x.id===client.id));};
 }
 
 /* --- Paramètres & intégrations --- */
@@ -935,6 +991,7 @@ VIEWS.params=()=>{
 VIEWS.rgpd=()=>{
   $('#pageTitle').textContent='Confidentialité & RGPD';
   const isClient=session.type==='client';
+  const isCommunalAdmin=isClient&&session.role==='admin';
   const nbSig=DB.signalements.filter(s=>s.nom||s.contact).length;
   $('#view').innerHTML=`
     <div class="grid2" style="align-items:start">
@@ -953,7 +1010,7 @@ VIEWS.rgpd=()=>{
       <button class="btn" onclick="showLegal('mentions','app')">Mentions légales</button>
       <button class="btn" style="margin-left:8px" onclick="showLegal('confidentialite','app')">Politique de confidentialité</button>
     </div></div>
-    ${isClient?`<div class="card" style="margin-top:18px"><div class="hd"><h2>Suppression du compte (droit à l'effacement)</h2></div><div class="bd">
+    ${isCommunalAdmin?`<div class="card" style="margin-top:18px"><div class="hd"><h2>Suppression du compte (droit à l'effacement)</h2></div><div class="bd">
       <div class="danger-box">
         <p style="margin-bottom:10px"><b>Demander la suppression du compte et des données de la commune.</b> Cette action relève du droit à l'effacement (art. 17 RGPD).</p>
         <p class="mini" style="margin-bottom:12px">En production, la demande déclenchera : résiliation de l'abonnement Stripe, suppression du compte Firebase Auth, et effacement (ou anonymisation) des données Firestore associées, dans le respect des durées légales de conservation.</p>
@@ -966,10 +1023,79 @@ VIEWS.rgpd=()=>{
     a.download='citypilot-rgpd-'+today()+'.json';a.click();toast('Export généré');};
   $('#rgAnon').onclick=()=>{if(!confirm('Anonymiser le nom et le contact de tous les signalements ? La description technique est conservée.'))return;
     DB.signalements.forEach(s=>{s.nom='';s.contact='';});save();toast('Signalements anonymisés');show('rgpd');};
-  if(isClient)$('#rgDelete').onclick=()=>{
+  if(isCommunalAdmin)$('#rgDelete').onclick=()=>{
     if(!confirm('Confirmer la demande de suppression du compte ?\n\nEn démo, cela vous déconnecte. En production, la procédure d\'effacement RGPD serait déclenchée.'))return;
     toast('Demande enregistrée — vous allez être déconnecté');
     setTimeout(()=>{session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';},1500);};
+};
+
+/* --- Gestion des utilisateurs (commun admin communal & admin plateforme) --- */
+function roleBadge(r){return `<span class="badge ${r==='admin'?'b-bleu':'b-muted'}">${r==='admin'?'Admin communal':'Agent'}</span>`;}
+function usersTable(client, canManage){
+  const list=client.users||[];
+  return `<div class="card"><div class="hd"><h2>Utilisateurs — ${esc(client.commune)}</h2><div class="sp"></div>
+      ${canManage?`<button class="btn sm pri" data-adduser="${client.id}">＋ Ajouter un utilisateur</button>`:''}</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Identifiant</th><th>Nom</th><th>Rôle</th><th>État</th>${canManage?'<th></th>':''}</tr></thead>
+    <tbody>${list.map(u=>`<tr>
+      <td><b>${esc(u.ident)}</b></td><td>${esc(u.nom)}</td><td>${roleBadge(u.role)}</td>
+      <td>${u.actif!==false?'<span class="badge b-ok">Actif</span>':'<span class="badge b-muted">Désactivé</span>'}</td>
+      ${canManage?`<td style="white-space:nowrap"><button class="btn sm" data-edituser="${client.id}:${u.id}">Modifier</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${canManage?5:4}"><div class="empty">Aucun utilisateur</div></td></tr>`}</tbody></table></div></div>`;
+}
+function bindUsersTable(scope, backView){
+  scope.querySelectorAll('[data-adduser]').forEach(b=>b.onclick=()=>{
+    const c=DB.clients.find(x=>x.id===b.dataset.adduser);userForm(c,null,backView);});
+  scope.querySelectorAll('[data-edituser]').forEach(b=>b.onclick=()=>{
+    const [cid,uid_]=b.dataset.edituser.split(':');const c=DB.clients.find(x=>x.id===cid);
+    userForm(c,(c.users||[]).find(u=>u.id===uid_),backView);});
+}
+function userForm(client, u, backView){
+  const isNew=!u;const v=k=>esc(u?.[k]??'');
+  const selfAdmin=session.type==='client'&&session.user&&u&&session.user.id===u.id;
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouvel utilisateur':esc(u.nom||u.ident)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd"><form id="usForm">
+      <div class="grid2">
+        <div class="field"><label>Identifiant de connexion</label><input name="ident" value="${v('ident')}" placeholder="ex. j.martin" required></div>
+        <div class="field"><label>Nom / fonction</label><input name="nom" value="${v('nom')}" placeholder="ex. Julien Martin"></div>
+        <div class="field"><label>Rôle</label><select name="role" ${selfAdmin?'disabled title="Vous ne pouvez pas changer votre propre rôle"':''}>
+          <option value="admin" ${v('role')==='admin'?'selected':''}>Admin communal (gère les utilisateurs)</option>
+          <option value="agent" ${v('role')==='agent'||isNew?'selected':''}>Agent (saisie & consultation)</option>
+        </select></div>
+        <div class="field"><label>Mot de passe ${isNew?'':'(laisser vide pour conserver)'}</label><input name="pwd" type="text" placeholder="${isNew?'mot de passe initial':'••••'}"></div>
+      </div>
+      <label class="consent" style="color:var(--ink)"><input type="checkbox" name="actif" ${u?.actif!==false?'checked':''} ${selfAdmin?'disabled':''}>
+        <span>Compte actif (peut se connecter)</span></label>
+      <p class="mini">🔒 En production, chaque utilisateur sera un compte Firebase Auth distinct ; les mots de passe ne transiteront jamais en clair.</p>
+    </form></div>
+    <div class="ft">${(!isNew&&!selfAdmin)?'<button class="btn dngr" id="usDel">Supprimer</button>':''}<div style="flex:1"></div>
+      <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="usSave">Enregistrer</button></div>`);
+  $('#usSave').onclick=()=>{
+    const fd=new FormData($('#usForm'));const ident=fd.get('ident').trim();
+    if(!ident)return toast('Identifiant requis');
+    if(!client.users)client.users=[];
+    const dup=client.users.find(x=>x.ident.toLowerCase()===ident.toLowerCase()&&(!u||x.id!==u.id));
+    if(dup)return toast('Cet identifiant existe déjà dans la commune');
+    const obj=u||{id:uid()};
+    obj.ident=ident;obj.nom=fd.get('nom');
+    if(!selfAdmin)obj.role=fd.get('role');
+    if(!selfAdmin)obj.actif=fd.get('actif')==='on';
+    if(fd.get('pwd'))obj.pwd=fd.get('pwd'); else if(isNew)obj.pwd='changeme';
+    if(isNew)client.users.push(obj);
+    save();closeModal();toast('Utilisateur enregistré');show(backView);};
+  if(!isNew&&!selfAdmin)$('#usDel').onclick=()=>{
+    if((client.users||[]).filter(x=>x.role==='admin').length<=1&&u.role==='admin')return toast('Impossible : gardez au moins un admin communal');
+    client.users=client.users.filter(x=>x.id!==u.id);save();closeModal();toast('Utilisateur supprimé');show(backView);};
+}
+
+/* Vue "Utilisateurs" côté admin communal */
+VIEWS.users=()=>{
+  if(session.role!=='admin'){show('dash');return;}
+  $('#pageTitle').textContent='Utilisateurs de la commune';
+  const c=session.client;
+  $('#view').innerHTML=`<p class="mini" style="margin-bottom:14px">Gérez les accès de votre équipe. Les <b>agents</b> accèdent à tous les modules de gestion ; les <b>admins communaux</b> peuvent en plus gérer les utilisateurs.</p>
+    ${usersTable(c,true)}`;
+  bindUsersTable($('#view'),'users');
 };
 
 /* --- Pages légales (gabarits à compléter) --- */
@@ -1020,18 +1146,31 @@ function backFromLegal(from){
 /* ------------------------------ Authentification ------------------------------ */
 $('#loginForm').onsubmit=e=>{
   e.preventDefault();
-  const code=$('#loginCode').value.trim().toUpperCase(), pwd=$('#loginPwd').value;
+  const raw=$('#loginCode').value.trim(), code=raw.toUpperCase(), pwd=$('#loginPwd').value;
   if(code==='ADMIN'&&pwd==='admin'){session={type:'admin'};boot('admin');return;}
-  const c=DB.clients.find(x=>x.code===code&&x.pwd===pwd);
-  if(!c)return toast('Code client ou mot de passe incorrect');
-  if(c.abo==='suspendu')return toast('Abonnement suspendu — contactez le support');
-  session={type:'client',client:c};boot('dash');
+  // Recherche d'un utilisateur nominatif (identifiant insensible à la casse) dans toutes les communes
+  let found=null;
+  for(const c of DB.clients){
+    const u=(c.users||[]).find(u=>u.ident.toLowerCase()===raw.toLowerCase()&&u.pwd===pwd);
+    if(u){found={client:c,user:u};break;}
+  }
+  // Rétrocompatibilité : ancien couple code commune / mot de passe commune
+  if(!found){
+    const c=DB.clients.find(x=>x.code===code&&x.pwd===pwd);
+    if(c){const u=(c.users||[]).find(u=>u.role==='admin')||{nom:c.commune,role:'admin',ident:c.code};found={client:c,user:u};}
+  }
+  if(!found)return toast('Identifiant ou mot de passe incorrect');
+  if(!found.user.actif&&found.user.actif!==undefined)return toast('Ce compte utilisateur est désactivé');
+  if(found.client.abo==='suspendu')return toast('Abonnement suspendu — contactez le support');
+  session={type:'client',client:found.client,user:found.user,role:found.user.role};
+  boot('dash');
 };
 function boot(v){
   $('#loginScreen').style.display='none';$('#publicScreen').style.display='none';
   $('#app').classList.add('on');
   $('#sbCommune').textContent=session.type==='admin'?'Console administrateur':session.client.commune;
-  $('#sbUser').textContent=session.type==='admin'?'ADMIN':session.client.code;
+  $('#sbUser').textContent=session.type==='admin'?'ADMIN'
+    :`${session.user.nom||session.client.code}\u00A0· ${session.role==='admin'?'Admin communal':'Agent'}`;
   show(v);
 }
 $('#btnLogout').onclick=()=>{session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';};
