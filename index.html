@@ -143,6 +143,20 @@ tbody tr{cursor:pointer}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-weight:600;z-index:3000;display:none;box-shadow:var(--shadow)}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 .mini{font-size:12px;color:var(--muted)}
+.dropzone{border:2px dashed var(--line);border-radius:10px;padding:20px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s}
+.dropzone:hover,.dropzone.over{border-color:var(--bleu);background:var(--bleu-t);color:var(--bleu)}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.thumb{position:relative;width:78px;height:78px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb .del{position:absolute;top:2px;right:2px;background:rgba(20,30,36,.75);color:#fff;border:none;border-radius:6px;width:20px;height:20px;font-size:12px;line-height:1;cursor:pointer}
+.legal{max-width:820px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:28px 32px;line-height:1.7}
+.legal h1{font-size:26px;margin-bottom:6px}
+.legal h2{font-size:18px;margin:22px 0 6px}
+.legal .todo{background:var(--warn-t);color:var(--warn);border-radius:6px;padding:1px 6px;font-weight:700;font-size:12.5px}
+.legal p{margin-bottom:8px}
+.consent{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--muted);margin:6px 0 12px;text-align:left}
+.consent input{width:auto;margin-top:2px;flex:none}
+.danger-box{border:1px solid var(--danger-t);background:var(--danger-t);border-radius:10px;padding:14px 16px}
 .link{color:var(--bleu);cursor:pointer;font-weight:600;text-decoration:none}
 @media(max-width:900px){
   #app.on{grid-template-columns:1fr;grid-template-rows:auto 1fr}
@@ -174,6 +188,10 @@ tbody tr{cursor:pointer}
         <a id="lnkAdmin">Administration</a>
       </div>
       <div class="demo-hint">Démo — client : <b>VALMONT37</b> / <b>demo</b> · admin : <b>ADMIN</b> / <b>admin</b></div>
+      <p class="mini" style="text-align:center;margin-top:14px">
+        <a class="link" onclick="showLegal('mentions','login')">Mentions légales</a> ·
+        <a class="link" onclick="showLegal('confidentialite','login')">Confidentialité</a>
+      </p>
     </div>
   </div>
 </div>
@@ -225,6 +243,8 @@ tbody tr{cursor:pointer}
               <div class="field"><label>Votre nom (facultatif)</label><input id="pubNom"></div>
               <div class="field"><label>Email ou téléphone (facultatif)</label><input id="pubContact"></div>
             </div>
+            <label class="consent"><input type="checkbox" id="pubConsent">
+              <span>J'accepte que les informations saisies soient transmises aux services techniques pour le traitement de mon signalement. Si je renseigne mon nom ou mon contact, j'autorise leur conservation à cette fin. <a class="link" onclick="showLegal('confidentialite','public')">En savoir plus</a>.</span></label>
             <button class="btn sig" id="pubSend" style="width:100%;justify-content:center;padding:11px">Envoyer le signalement</button>
             <p class="mini" style="margin-top:8px">Cliquez sur la carte pour positionner le problème (recommandé).</p>
           </div>
@@ -232,9 +252,16 @@ tbody tr{cursor:pointer}
         </div>
       </div>
     </div>
-    <p style="text-align:center;margin-top:16px"><a class="link" id="pubBack">← Retour à la connexion agents</a></p>
+    <p style="text-align:center;margin-top:16px">
+      <a class="link" id="pubBack">← Retour à la connexion agents</a>
+      &nbsp;·&nbsp; <a class="link" onclick="showLegal('mentions','public')">Mentions légales</a>
+      &nbsp;·&nbsp; <a class="link" onclick="showLegal('confidentialite','public')">Confidentialité</a>
+    </p>
   </div>
 </div>
+
+<!-- ================= PAGES LÉGALES ================= -->
+<div class="pub-wrap" id="legalScreen" style="display:none"></div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
@@ -329,6 +356,14 @@ const DB = {
     {id:uid(), lat:47.2997, lng:0.7544, cat:'Propreté / dépôt sauvage', desc:'Dépôt de gravats à l’entrée du parc',
      nom:'', contact:'', date:addDays(today(),-6), statut:'En cours'},
   ],
+  travaux: [
+    {id:uid(), lat:47.3040, lng:0.7515, titre:'Réfection trottoir Place de la Mairie', categorie:'Voirie', priorite:'Moyenne', statut:'À planifier',
+     cree:addDays(today(),-5), desc:'Dépose des pavés descellés, reprise de la sous-couche puis repose. Prévoir barriérage et signalisation. Coordonner avec le marché de Noël (éviter décembre).',
+     photos:[], histo:[{d:addDays(today(),-5),t:'Créé lors de la tournée hebdomadaire'}]},
+    {id:uid(), lat:47.3001, lng:0.7492, titre:'Remplacement jeux école primaire', categorie:'Espaces verts / jeux', priorite:'Haute', statut:'En cours',
+     cree:addDays(today(),-30), desc:'Structure de jeux vétuste (contrôle annuel défavorable). Déposer, commander la nouvelle structure normée EN 1176, couler la dalle amortissante. Devis validé.',
+     photos:[], histo:[{d:addDays(today(),-30),t:'Créé suite au rapport de contrôle des aires de jeux'},{d:addDays(today(),-7),t:'Devis signé, livraison sous 3 semaines'}]},
+  ],
 };
 let session = null; // {type:'client'|'admin', client}
 
@@ -397,10 +432,13 @@ const ICONS = {
   tree:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22v-5"/><path d="M7 17h10l-3-5h2l-4-7-4 7h2l-3 5z"/></svg>',
   fire:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c4 0 7-3 7-7 0-5-4-7-4-11-3 2-4 5-4 7-1-1-2-3-2-5-2 2-4 5-4 9 0 4 3 7 7 7z"/></svg>',
   road:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21 9 3M20 21 15 3M12 7v2M12 13v2M12 19v2"/></svg>',
+  tools:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0 5 5l-8.4 8.4a2.1 2.1 0 0 1-3-3z"/><path d="m9 8-6 6"/><path d="m17 3 4 4"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
 };
 const NAV = [
   {sec:'Pilotage'},
   {id:'dash', label:'Tableau de bord', ico:'dash'},
+  {id:'travaux', label:'Travaux & chantiers', ico:'tools', cnt:()=>DB.travaux.filter(t=>t.statut!=='Terminé').length},
   {id:'signalements', label:'Signalements', ico:'mega', cnt:()=>DB.signalements.filter(s=>s.statut==='Nouveau').length},
   {sec:'Patrimoine cartographié'},
   {id:'arbres', label:'Arbres', ico:'tree'},
@@ -413,6 +451,7 @@ const NAV = [
   {id:'vehicules', label:'Flotte véhicules', ico:'truck', cnt:()=>DB.vehicules.filter(v=>(v.ct&&daysTo(v.ct)<=30)||(v.revision&&daysTo(v.revision)<=30)).length},
   {id:'batiments', label:'Bâtiments', ico:'home'},
   {sec:'Compte'},
+  {id:'rgpd', label:'Confidentialité & RGPD', ico:'shield'},
   {id:'params', label:'Paramètres & intégrations', ico:'gear'},
 ];
 const NAV_ADMIN = [{sec:'Administration'},{id:'admin',label:'Clients & abonnements',ico:'users'},{id:'params',label:'Intégrations',ico:'gear'}];
@@ -697,6 +736,76 @@ function vehForm(v){
   if(!isNew)$('#vhDel').onclick=()=>{DB.vehicules=DB.vehicules.filter(x=>x.id!==v.id);save();closeModal();show('vehicules');};
 }
 
+/* --- Travaux & chantiers (carte généraliste + photos) --- */
+const TRAV_COL={'À planifier':'#B77A12','En cours':'#2F5B7C','Terminé':'#2E7D52'};
+VIEWS.travaux=()=>{
+  $('#pageTitle').textContent='Travaux & chantiers';
+  const list=DB.travaux;
+  $('#view').innerHTML=`
+    <div class="map-tools">
+      <button class="btn pri" id="btnAddT">＋ Nouveau travaux (point sur la carte)</button>
+      <span class="hint">Carte généraliste tous domaines : décrivez ce qu'il faut faire, ajoutez des photos, suivez l'avancement.</span>
+    </div>
+    <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="travMap"></div>
+      <div class="legend"><span><span class="sw" style="background:#B77A12"></span>À planifier</span><span><span class="sw" style="background:#2F5B7C"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminé</span></div>
+    </div></div>
+    <div class="card"><div class="hd"><h2>${list.length} travaux</h2></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Intitulé</th><th>Catégorie</th><th>Priorité</th><th>Créé le</th><th>Photos</th><th>Statut</th></tr></thead>
+    <tbody>${list.length?list.map(t=>`<tr data-id="${t.id}">
+      <td><b>${esc(t.titre)}</b></td><td>${esc(t.categorie)}</td><td>${etatBadge2Prio(t.priorite)}</td>
+      <td>${fmtD(t.cree)}</td><td>${t.photos&&t.photos.length?'📷 '+t.photos.length:'—'}</td><td>${etatBadge(t.statut)}</td></tr>`).join('')
+    :'<tr><td colspan="6"><div class="empty">Aucun travaux. Cliquez sur « Nouveau travaux ».</div></td></tr>'}</tbody></table></div></div>`;
+  buildMap('travMap',list,t=>TRAV_COL[t.statut]||'#2F5B7C',t=>travForm(t),latlng=>travForm(null,latlng));
+  $('#btnAddT').onclick=()=>{addMode=true;$('#travMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le chantier');};
+  $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>travForm(list.find(x=>x.id===tr.dataset.id)));
+};
+function travForm(t,latlng){
+  const isNew=!t;const v=k=>esc(t?.[k]??'');
+  if(isNew)t={id:uid(),lat:latlng?.lat,lng:latlng?.lng,cree:today(),photos:[],histo:[{d:today(),t:'Créé'}]};
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouveau travaux':esc(t.titre)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd"><form id="tvForm">
+      <div class="field"><label>Intitulé</label><input name="titre" value="${v('titre')}" placeholder="ex. Réfection trottoir rue des Écoles"></div>
+      <div class="grid3">
+        <div class="field"><label>Catégorie</label><select name="categorie">${['Voirie','Bâtiment','Espaces verts / jeux','Éclairage public','Réseaux (eau, pluvial)','Mobilier urbain','Signalisation','Autre'].map(o=>`<option ${v('categorie')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>Priorité</label><select name="priorite">${['Haute','Moyenne','Basse'].map(o=>`<option ${v('priorite')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>Statut</label><select name="statut">${['À planifier','En cours','Terminé'].map(o=>`<option ${v('statut')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Ce qu'il faut faire</label><textarea name="desc" rows="4" placeholder="Décrivez précisément l'intervention : nature des travaux, contraintes, matériel, coordination…">${v('desc')}</textarea></div>
+      <label>Photos ${isNew?'':`(${t.photos.length})`}</label>
+      <div class="dropzone" id="tvDrop">📷 Glissez-déposez des photos ici, ou cliquez pour parcourir
+        <input type="file" id="tvFiles" accept="image/*" multiple style="display:none"></div>
+      <div class="thumbs" id="tvThumbs"></div>
+      ${isNew?'':`<label style="margin-top:14px">Historique</label>
+      <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px;max-height:130px;overflow-y:auto">
+        ${(t.histo||[]).map(h=>`<div style="display:flex;gap:10px;padding:3px 0"><span class="mini" style="white-space:nowrap">${fmtD(h.d)}</span><span>${esc(h.t)}</span></div>`).join('')||'<span class="mini">—</span>'}
+      </div>
+      <div class="field"><label>Ajouter au suivi</label><input id="tvHisto" placeholder="ex. Entreprise contactée, intervention semaine 12"></div>`}
+    </form></div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="tvDel">Supprimer</button>'}<div style="flex:1"></div>
+      <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="tvSave">Enregistrer</button></div>`);
+  const renderThumbs=()=>{$('#tvThumbs').innerHTML=(t.photos||[]).map((p,i)=>
+    `<div class="thumb"><img src="${p.data}" alt="${esc(p.name)}"><button class="del" data-i="${i}" title="Retirer">✕</button></div>`).join('');
+    $('#tvThumbs').querySelectorAll('.del').forEach(b=>b.onclick=()=>{t.photos.splice(+b.dataset.i,1);renderThumbs();});};
+  renderThumbs();
+  const addFiles=files=>{[...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
+    const r=new FileReader();r.onload=()=>{t.photos.push({name:f.name,data:r.result});renderThumbs();};r.readAsDataURL(f);});};
+  const dz=$('#tvDrop');
+  dz.onclick=()=>$('#tvFiles').click();
+  $('#tvFiles').onchange=e=>addFiles(e.target.files);
+  ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
+  dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
+  $('#tvSave').onclick=()=>{
+    const fd=new FormData($('#tvForm'));const old=t.statut;
+    ['titre','categorie','priorite','statut','desc'].forEach(k=>t[k]=fd.get(k));
+    const h=$('#tvHisto')?.value?.trim();if(h)t.histo.push({d:today(),t:h});
+    if(!isNew&&old&&old!==t.statut)t.histo.push({d:today(),t:'Statut : '+old+' → '+t.statut});
+    if(isNew)DB.travaux.push(t);
+    save();closeModal();toast('Enregistré');show('travaux');};
+  if(!isNew)$('#tvDel').onclick=()=>{DB.travaux=DB.travaux.filter(x=>x.id!==t.id);save();closeModal();show('travaux');};
+}
+
 /* --- Défibrillateurs --- */
 VIEWS.dae=()=>{const cfg={key:'dae',title:'Défibrillateurs (DAE)',
   color:it=>Math.min(daysTo(it.electrodes),daysTo(it.batterie))<0?'#C13B2A':Math.min(daysTo(it.electrodes),daysTo(it.batterie))<=30?'#B77A12':'#0E8A8A',
@@ -721,8 +830,13 @@ VIEWS.signalements=()=>{
       <td style="white-space:nowrap">
         ${s.statut!=='Traité'?`<button class="btn sm" data-next="${s.id}">${s.statut==='Nouveau'?'Prendre en charge':'Marquer traité'}</button>`:''}
         ${s.lat?`<button class="btn sm" data-inter="${s.id}">→ Intervention voirie</button>`:''}
-      </td></tr>`).join('')||'<tr><td colspan=6><div class="empty">Aucun signalement</div></td></tr>'}</tbody></table></div></div>`;
+        <button class="btn sm dngr" data-delsig="${s.id}" title="Supprimer (RGPD)">🗑</button>
+      </td></tr>`).join('')||'<tr><td colspan=6><div class="empty">Aucun signalement</div></td></tr>'}</tbody></table>
+    <p class="mini" style="padding:10px 12px">🔒 Pensez à anonymiser ou supprimer les données personnelles une fois le signalement traité (voir Confidentialité & RGPD).</p></div></div>`;
   buildMap('sigMap',DB.signalements,s=>s.statut==='Nouveau'?'#E8620F':s.statut==='En cours'?'#B77A12':'#2E7D52',()=>{});
+  $('#view').querySelectorAll('[data-delsig]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+    if(!confirm('Supprimer définitivement ce signalement et ses données personnelles ?'))return;
+    DB.signalements=DB.signalements.filter(x=>x.id!==b.dataset.delsig);save();toast('Signalement supprimé');show('signalements');});
   $('#view').querySelectorAll('[data-next]').forEach(b=>b.onclick=e=>{e.stopPropagation();
     const s=DB.signalements.find(x=>x.id===b.dataset.next);
     s.statut=s.statut==='Nouveau'?'En cours':'Traité';save();show('signalements');});
@@ -817,6 +931,92 @@ VIEWS.params=()=>{
     const r=new FileReader();r.onload=()=>{try{Object.assign(DB,JSON.parse(r.result));toast('Données restaurées');show('dash');}catch{toast('Fichier invalide');}};r.readAsText(f);};
 };
 
+/* --- Confidentialité & RGPD --- */
+VIEWS.rgpd=()=>{
+  $('#pageTitle').textContent='Confidentialité & RGPD';
+  const isClient=session.type==='client';
+  const nbSig=DB.signalements.filter(s=>s.nom||s.contact).length;
+  $('#view').innerHTML=`
+    <div class="grid2" style="align-items:start">
+      <div class="card"><div class="hd"><h2>Droit d'accès & portabilité</h2></div><div class="bd">
+        <p style="margin-bottom:10px">Exportez l'ensemble des données ${isClient?'de votre commune':'de la plateforme'} dans un format lisible et réutilisable (JSON), conformément au droit à la portabilité (art. 20 RGPD).</p>
+        <button class="btn" id="rgExport">⬇ Exporter les données</button>
+      </div></div>
+      <div class="card"><div class="hd"><h2>Données personnelles des signalements</h2></div><div class="bd">
+        <p style="margin-bottom:10px">Les signalements citoyens peuvent contenir des données personnelles (nom, contact). Vous pouvez les anonymiser pour ne conserver que l'information technique utile au traitement.</p>
+        <p class="mini" style="margin-bottom:10px">Actuellement : <b>${nbSig}</b> signalement(s) avec données personnelles.</p>
+        <button class="btn" id="rgAnon" ${nbSig?'':'disabled'}>Anonymiser tous les signalements</button>
+      </div></div>
+    </div>
+    <div class="card" style="margin-top:18px"><div class="hd"><h2>Mentions & politique</h2></div><div class="bd">
+      <p style="margin-bottom:10px">Consultez et intégrez les mentions légales et la politique de confidentialité présentées aux citoyens et aux agents.</p>
+      <button class="btn" onclick="showLegal('mentions','app')">Mentions légales</button>
+      <button class="btn" style="margin-left:8px" onclick="showLegal('confidentialite','app')">Politique de confidentialité</button>
+    </div></div>
+    ${isClient?`<div class="card" style="margin-top:18px"><div class="hd"><h2>Suppression du compte (droit à l'effacement)</h2></div><div class="bd">
+      <div class="danger-box">
+        <p style="margin-bottom:10px"><b>Demander la suppression du compte et des données de la commune.</b> Cette action relève du droit à l'effacement (art. 17 RGPD).</p>
+        <p class="mini" style="margin-bottom:12px">En production, la demande déclenchera : résiliation de l'abonnement Stripe, suppression du compte Firebase Auth, et effacement (ou anonymisation) des données Firestore associées, dans le respect des durées légales de conservation.</p>
+        <button class="btn dngr" id="rgDelete">Demander la suppression de mon compte</button>
+      </div>
+    </div></div>`:''}`;
+  $('#rgExport').onclick=()=>{
+    const data=isClient?{commune:session.client.commune, export:today(), donnees:DB}:DB;
+    const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(data,null,2));
+    a.download='citypilot-rgpd-'+today()+'.json';a.click();toast('Export généré');};
+  $('#rgAnon').onclick=()=>{if(!confirm('Anonymiser le nom et le contact de tous les signalements ? La description technique est conservée.'))return;
+    DB.signalements.forEach(s=>{s.nom='';s.contact='';});save();toast('Signalements anonymisés');show('rgpd');};
+  if(isClient)$('#rgDelete').onclick=()=>{
+    if(!confirm('Confirmer la demande de suppression du compte ?\n\nEn démo, cela vous déconnecte. En production, la procédure d\'effacement RGPD serait déclenchée.'))return;
+    toast('Demande enregistrée — vous allez être déconnecté');
+    setTimeout(()=>{session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';},1500);};
+};
+
+/* --- Pages légales (gabarits à compléter) --- */
+const LEGAL={
+  mentions:`<h1>Mentions légales</h1>
+    <p class="mini">Modèle à compléter avant mise en production. Les éléments entre crochets doivent être renseignés selon votre situation (voir modèles CNIL / service-public.fr).</p>
+    <h2>Éditeur du service</h2>
+    <p>Le service CityPilot est édité par <span class="todo">[Raison sociale / nom de l'éditeur]</span>, <span class="todo">[forme juridique et capital]</span>, dont le siège est situé <span class="todo">[adresse]</span>. SIRET : <span class="todo">[numéro]</span>. Directeur de la publication : <span class="todo">[nom]</span>. Contact : <span class="todo">[email / téléphone]</span>.</p>
+    <h2>Hébergement</h2>
+    <p>Le site est hébergé par <span class="todo">[hébergeur — ex. GitHub, Inc. pour les pages statiques / Google Firebase pour les données]</span>, <span class="todo">[adresse de l'hébergeur]</span>.</p>
+    <h2>Propriété intellectuelle</h2>
+    <p>L'ensemble des contenus (structure, textes, code) est protégé. Les données saisies restent la propriété de la collectivité utilisatrice.</p>
+    <h2>Responsable de traitement</h2>
+    <p>Pour les données du patrimoine communal et des signalements, le responsable de traitement est <span class="todo">[la commune utilisatrice / à préciser dans le contrat]</span>.</p>`,
+  confidentialite:`<h1>Politique de confidentialité</h1>
+    <p class="mini">Modèle à compléter et à faire valider (juriste ou DPO). Adaptez les durées et bases légales à votre traitement réel.</p>
+    <h2>Données collectées</h2>
+    <p>Espace agents : identifiants de connexion et données de gestion du patrimoine communal. Espace citoyen : catégorie et description du signalement, localisation, et — facultativement — nom et coordonnées fournis par la personne.</p>
+    <h2>Finalités</h2>
+    <p>Gestion des services techniques, traitement des signalements et suivi des interventions. Base légale : <span class="todo">[mission d'intérêt public / consentement pour les coordonnées facultatives]</span>.</p>
+    <h2>Durée de conservation</h2>
+    <p>Les données personnelles des signalements sont conservées <span class="todo">[durée — ex. 12 mois après clôture]</span> puis anonymisées. Les autres données sont conservées pendant la durée du contrat.</p>
+    <h2>Destinataires</h2>
+    <p>Les données sont accessibles aux seuls agents habilités de la collectivité. Aucune cession commerciale n'est réalisée. Hébergement des données : <span class="todo">[Firebase / région]</span>.</p>
+    <h2>Vos droits</h2>
+    <p>Vous disposez d'un droit d'accès, de rectification, d'effacement, d'opposition et de portabilité. Pour les exercer : <span class="todo">[email du DPO ou du responsable]</span>. Vous pouvez introduire une réclamation auprès de la CNIL (cnil.fr).</p>`
+};
+function showLegal(which, from){
+  const html=LEGAL[which];
+  if(from==='app'){
+    openModal(`<div class="hd"><h2>&nbsp;</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+      <div class="bd"><div class="legal" style="box-shadow:none;padding:0">${html}</div></div>
+      <div class="ft"><button class="btn pri" onclick="closeModal()">Fermer</button></div>`);
+  } else {
+    $('#loginScreen').style.display='none';$('#publicScreen').style.display='none';
+    $('#legalScreen').style.display='block';
+    $('#legalScreen').innerHTML=`<div style="max-width:820px;margin:0 auto;padding:30px 16px">
+      <div class="legal">${html}</div>
+      <p style="text-align:center;margin-top:16px"><a class="link" onclick="backFromLegal('${from}')">← Retour</a></p></div>`;
+  }
+}
+function backFromLegal(from){
+  $('#legalScreen').style.display='none';
+  if(from==='public')$('#publicScreen').style.display='block';
+  else $('#loginScreen').style.display='flex';
+}
+
 /* ------------------------------ Authentification ------------------------------ */
 $('#loginForm').onsubmit=e=>{
   e.preventDefault();
@@ -854,10 +1054,11 @@ $('#pubBack').onclick=()=>{$('#publicScreen').style.display='none';$('#loginScre
 $('#pubSend').onclick=()=>{
   const desc=$('#pubDesc').value.trim();
   if(!desc)return toast('Merci de décrire le problème');
+  if(!$('#pubConsent').checked)return toast('Merci de cocher la case de consentement');
   DB.signalements.push({id:uid(),lat:pubLatLng?.lat??null,lng:pubLatLng?.lng??null,
     cat:$('#pubCat').value,desc,nom:$('#pubNom').value,contact:$('#pubContact').value,date:today(),statut:'Nouveau'});
   save();
-  $('#pubDesc').value='';$('#pubNom').value='';$('#pubContact').value='';
+  $('#pubDesc').value='';$('#pubNom').value='';$('#pubContact').value='';$('#pubConsent').checked=false;
   if(pubMarker){pubMap.removeLayer(pubMarker);pubMarker=null;pubLatLng=null;}
   toast('Signalement envoyé — merci ! Les services techniques ont été alertés.');
 };
