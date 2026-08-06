@@ -311,6 +311,11 @@ const DB = {
      users:[
        {id:uid(), ident:'STMARTIN', nom:'Secrétariat de mairie', role:'admin', pwd:'demo', actif:true},
      ]},
+    {id:'c3', code:'STAIGNAN41', pwd:'demo', commune:'Saint-Aignan', contact:'mairie@ville-saint-aignan.fr',
+     abo:'actif', echeance:addDays(today(),365), plan:'Commune < 5 000 hab.', centre:[47.2694,1.3767],
+     users:[
+       {id:uid(), ident:'STAIGNAN41', nom:'Services techniques — Saint-Aignan', role:'admin', pwd:'demo', actif:true},
+     ]},
   ],
   arbres: [
     {id:uid(), lat:47.3035, lng:0.7508, essence:'Platane commun', hauteur:'18 m', etat:'Bon', plantation:'1962', lieu:'Place de la Mairie', note:''},
@@ -521,9 +526,13 @@ function show(v){
 const MAPCOLORS={arbres:'#2E7D52',mobilier:'#7B5CB8',voirie:'#E8620F',armoires:'#B77A12',bornes:'#C13B2A',dae:'#0E8A8A',batiments:'#2F5B7C',signalements:'#E8620F'};
 let mapInst=null, addMode=false;
 
+function mapCenter(){
+  if(session && session.client && Array.isArray(session.client.centre)) return session.client.centre;
+  return CENTER;
+}
 function buildMap(elId, items, colorKey, onClickItem, onAddPoint){
   if(mapInst){mapInst.remove();mapInst=null;}
-  const m=L.map(elId).setView(CENTER,15);
+  const m=L.map(elId).setView(mapCenter(),15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
   const pts=[];
   items.forEach(it=>{
@@ -548,6 +557,70 @@ function importGeoJSON(file, cb){
   r.readAsText(file);
 }
 
+/* Conversion Lambert 93 (EPSG:2154) -> WGS84 (lat/lon).
+   Formules IGN (projection conique conforme de Lambert). */
+function lambert93ToWGS84(X, Y){
+  const n=0.7256077650532670, C=11754255.426096, Xs=700000, Ys=12655612.049876;
+  const e=0.08181919106, a=6378137;
+  const dx=X-Xs, dy=Y-Ys;
+  const R=Math.sqrt(dx*dx+dy*dy);
+  const gamma=Math.atan2(dx, -dy);
+  const lon0=3*Math.PI/180;
+  const lon=lon0+gamma/n;
+  const latIso=-1/n*Math.log(Math.abs(R/C));
+  let phi=2*Math.atan(Math.exp(latIso))-Math.PI/2;
+  for(let i=0;i<10;i++){
+    const num=1+e*Math.sin(phi), den=1-e*Math.sin(phi);
+    phi=2*Math.atan(Math.pow(num/den, e/2)*Math.exp(latIso))-Math.PI/2;
+  }
+  return {lat: phi*180/Math.PI, lng: lon*180/Math.PI};
+}
+
+/* Import CSV cartographique : détecte le séparateur, les colonnes de coordonnées,
+   et convertit automatiquement Lambert 93 -> WGS84 si nécessaire. */
+function importCSV(file, cb){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      let text=r.result.replace(/^\uFEFF/,''); // retirer le BOM
+      const lines=text.split(/\r?\n/).filter(l=>l.trim().length);
+      if(lines.length<2){toast('CSV vide ou sans données');return;}
+      // Détection du séparateur : ; ou , ou tabulation
+      const cand=[';','\t',','];
+      const sep=cand.map(s=>({s,n:(lines[0].split(s).length)})).sort((a,b)=>b.n-a.n)[0].s;
+      const split=l=>l.split(sep).map(c=>c.trim().replace(/^"|"$/g,''));
+      const headers=split(lines[0]).map(h=>h.toLowerCase());
+      // Repérage des colonnes de coordonnées.
+      // Noms courts (1-2 lettres) : correspondance EXACTE pour éviter les faux positifs
+      // (ex. "nom" ne doit pas être pris pour "northing" via la lettre n).
+      const findCol=names=>headers.findIndex(h=>names.some(n=>n.length<=2?h===n:(h===n||h.includes(n))));
+      const iLat=findCol(['latitude','lat']);
+      const iLon=findCol(['longitude','lon','lng']);
+      const iX=findCol(['easting','x']);
+      const iYc=findCol(['northing','y']);
+      const rows=lines.slice(1).map(split);
+      const num=v=>parseFloat(String(v).replace(',','.'));
+      const out=[];
+      rows.forEach(cells=>{
+        const props={}; headers.forEach((h,i)=>props[h]=cells[i]);
+        let lat=null,lng=null;
+        if(iLat>=0&&iLon>=0){
+          lat=num(cells[iLat]); lng=num(cells[iLon]);
+        } else if(iX>=0&&iYc>=0){
+          const X=num(cells[iX]), Y=num(cells[iYc]);
+          // Heuristique : de grandes valeurs (>1000) = mètres Lambert 93
+          if(Math.abs(X)>180||Math.abs(Y)>90){ const c=lambert93ToWGS84(X,Y); lat=c.lat; lng=c.lng; }
+          else { lat=Y; lng=X; }
+        }
+        if(lat!=null&&lng!=null&&isFinite(lat)&&isFinite(lng)) out.push({lat,lng,props});
+      });
+      if(!out.length){toast('Aucune coordonnée reconnue (colonnes lat/lon ou X/Y attendues)');return;}
+      cb(out);
+    }catch(e){toast('Fichier CSV invalide');}
+  };
+  r.readAsText(file);
+}
+
 /* Module cartographique générique : carte + saisie point + import QGIS + tableau + fiche */
 function assetModule(cfg){
   $('#pageTitle').textContent=cfg.title;
@@ -556,7 +629,8 @@ function assetModule(cfg){
     <div class="map-tools">
       <button class="btn pri" id="btnAdd">＋ Saisir un point sur la carte</button>
       <label class="btn" style="margin:0">⬆ Importer GeoJSON (QGIS)<input type="file" id="fileGJ" accept=".geojson,.json" style="display:none"></label>
-      <span class="hint">${cfg.hint||'Export QGIS : couche de points au format GeoJSON (WGS 84 / EPSG:4326).'}</span>
+      <label class="btn" style="margin:0">⬆ Importer CSV<input type="file" id="fileCSV" accept=".csv,.txt" style="display:none"></label>
+      <span class="hint">${cfg.hint||'Import GeoJSON (QGIS) ou CSV. Coordonnées lat/lon (WGS 84) ou X/Y Lambert 93 détectées automatiquement.'}</span>
     </div>
     <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="assetMap"></div>
     ${cfg.legend?`<div class="legend">${cfg.legend}</div>`:''}</div></div>
@@ -568,6 +642,8 @@ function assetModule(cfg){
   $('#btnAdd').onclick=()=>{addMode=true;$('#assetMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le point');};
   $('#fileGJ').onchange=e=>{if(e.target.files[0])importGeoJSON(e.target.files[0],pts=>{
     pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s)');show(cfg.key);});};
+  $('#fileCSV').onchange=e=>{if(e.target.files[0])importCSV(e.target.files[0],pts=>{
+    pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s) depuis le CSV');show(cfg.key);});};
   $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>cfg.form(list.find(x=>x.id===tr.dataset.id)));
   $('#btnCsv').onclick=()=>{
     const rows=[cfg.cols.map(c=>c.h).join(';')].concat(list.map(it=>cfg.cols.map(c=>String(c.r(it)).replace(/<[^>]*>/g,'')).join(';')));
