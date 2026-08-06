@@ -754,8 +754,8 @@ VIEWS.batiments=()=>{const cfg={key:'batiments',title:'Bâtiments communaux',col
 VIEWS.voirie=()=>{const cfg={key:'interventions',title:'Voirie — interventions',
   color:it=>({'À faire':'#C13B2A','En cours':'#B77A12','Terminée':'#2E7D52'})[it.statut],
   legend:'<span><span class="sw" style="background:#C13B2A"></span>À faire</span><span><span class="sw" style="background:#B77A12"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminée</span>',
-  cols:[{h:'Type',r:i=>`<b>${esc(i.type)}</b>`},{h:'Voie',r:i=>esc(i.voie)},{h:'Priorité',r:i=>etatBadge2Prio(i.priorite)},{h:'Créée le',r:i=>fmtD(i.cree)},{h:'Statut',r:i=>etatBadge(i.statut)},{h:'Description',r:i=>esc(i.desc)}],
-  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,type:p.props.type||'Autre',voie:p.props.voie||'',priorite:'Moyenne',statut:'À faire',cree:today(),desc:p.props.desc||'',histo:[{d:today(),t:'Importée depuis QGIS'}]}),
+  cols:[{h:'Type',r:i=>`<b>${esc(i.type)}</b>`},{h:'Voie',r:i=>esc(i.voie)},{h:'Priorité',r:i=>etatBadge2Prio(i.priorite)},{h:'Créée le',r:i=>fmtD(i.cree)},{h:'Photos',r:i=>i.photos&&i.photos.length?'📷 '+i.photos.length:'—'},{h:'Statut',r:i=>etatBadge(i.statut)},{h:'Description',r:i=>esc(i.desc)}],
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,type:p.props.type||'Autre',voie:p.props.voie||'',priorite:'Moyenne',statut:'À faire',cree:today(),desc:p.props.desc||'',photos:[],histo:[{d:today(),t:'Importée depuis QGIS'}]}),
   form:(it,ll)=>interForm(it,ll)};
   assetModule(cfg);};
 function etatBadge2Prio(p){return `<span class="badge ${p==='Haute'?'b-danger':p==='Moyenne'?'b-warn':'b-muted'}">${esc(p)}</span>`;}
@@ -771,7 +771,11 @@ function interForm(it,latlng){
         <div class="field"><label>Statut</label><select name="statut">${['À faire','En cours','Terminée'].map(o=>`<option ${v('statut')===o?'selected':''}>${o}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Description</label><textarea name="desc" rows="2">${v('desc')}</textarea></div>
-      ${isNew?'':`<label>Historique</label>
+      <label>Photos ${isNew?'':`(${(it.photos||[]).length})`}</label>
+      <div class="dropzone" id="ivDrop">📷 Glissez-déposez des photos ici, ou cliquez pour parcourir
+        <input type="file" id="ivFiles" accept="image/*" multiple style="display:none"></div>
+      <div class="thumbs" id="ivThumbs"></div>
+      ${isNew?'':`<label style="margin-top:14px">Historique</label>
       <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px;max-height:160px;overflow-y:auto">
         ${(it.histo||[]).map(h=>`<div style="display:flex;gap:10px;padding:3px 0"><span class="mini" style="white-space:nowrap">${fmtD(h.d)}</span><span>${esc(h.t)}</span></div>`).join('')||'<span class="mini">Aucune entrée</span>'}
       </div>
@@ -780,11 +784,27 @@ function interForm(it,latlng){
     <div class="ft">${isNew?'':'<button class="btn dngr" id="ivDel">Supprimer</button>'}<div style="flex:1"></div>
       ${isNew?'':'<button class="btn" id="ivPrint">🖨 Imprimer</button><button class="btn" id="ivShare">↗ Partager</button>'}
       <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="ivSave">Enregistrer</button></div>`);
+  if(it && !it.photos) it.photos=[];
+  // Buffer photos pour une nouvelle intervention (avant enregistrement)
+  const photoBuf = it ? it.photos : (interForm._buf = interForm._buf || []);
+  const renderIvThumbs=()=>{$('#ivThumbs').innerHTML=(photoBuf||[]).map((p,i)=>
+    `<div class="thumb"><img src="${p.data}" alt="${esc(p.name)}"><button class="del" data-i="${i}" title="Retirer">✕</button></div>`).join('');
+    $('#ivThumbs').querySelectorAll('.del').forEach(b=>b.onclick=()=>{photoBuf.splice(+b.dataset.i,1);renderIvThumbs();});};
+  renderIvThumbs();
+  const addIvFiles=files=>{[...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
+    const r=new FileReader();r.onload=()=>{photoBuf.push({name:f.name,data:r.result});renderIvThumbs();};r.readAsDataURL(f);});};
+  const ivdz=$('#ivDrop');
+  ivdz.onclick=()=>$('#ivFiles').click();
+  $('#ivFiles').onchange=e=>addIvFiles(e.target.files);
+  ['dragover','dragenter'].forEach(ev=>ivdz.addEventListener(ev,e=>{e.preventDefault();ivdz.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>ivdz.addEventListener(ev,e=>{e.preventDefault();ivdz.classList.remove('over');}));
+  ivdz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addIvFiles(e.dataTransfer.files);});
   $('#ivSave').onclick=()=>{
     const fd=new FormData($('#ivForm'));
-    const obj=it||{id:uid(),lat:latlng?.lat,lng:latlng?.lng,cree:today(),histo:[{d:today(),t:'Créée'}]};
+    const obj=it||{id:uid(),lat:latlng?.lat,lng:latlng?.lng,cree:today(),histo:[{d:today(),t:'Créée'}],photos:[]};
     const oldStatut=obj.statut;
     ['type','voie','priorite','statut','desc'].forEach(k=>obj[k]=fd.get(k));
+    if(isNew){ obj.photos=(interForm._buf||[]).slice(); interForm._buf=[]; }
     const h=$('#ivHisto')?.value?.trim();if(h)obj.histo.push({d:today(),t:h});
     if(!isNew&&oldStatut&&oldStatut!==obj.statut)obj.histo.push({d:today(),t:'Statut : '+oldStatut+' → '+obj.statut});
     if(isNew){DB.interventions.push(obj);save();toast('Intervention créée — vous pouvez l\'imprimer ou la partager');interForm(obj);}
@@ -799,6 +819,7 @@ function interForm(it,latlng){
 function printIntervention(it){
   const commune = session&&session.client ? session.client.commune : 'Commune';
   const histo = (it.histo||[]).map(h=>`<tr><td class="d">${fmtD(h.d)}</td><td>${esc(h.t)}</td></tr>`).join('')||'<tr><td colspan="2">—</td></tr>';
+  const photos = (it.photos||[]).map(p=>`<img src="${p.data}" alt="${esc(p.name)}">`).join('');
   const w=window.open('','_blank','width=900,height=700');
   if(!w){toast('Autorisez les fenêtres pop-up pour imprimer');return;}
   w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Intervention voirie — ${esc(it.type)}</title>
@@ -812,7 +833,8 @@ function printIntervention(it){
       p{margin:0 0 8px;white-space:pre-wrap} table{width:100%;border-collapse:collapse;font-size:13px}
       td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top} td.d{white-space:nowrap;color:#5C6B70;width:110px}
       .foot{margin-top:24px;font-size:11px;color:#8a9499;border-top:1px solid #DBE2E0;padding-top:8px}
-      @media print{body{margin:12mm}}
+      .photos{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px} .photos img{width:220px;height:165px;object-fit:cover;border:1px solid #DBE2E0;border-radius:6px}
+      @media print{body{margin:12mm} .photos img{width:32%;height:auto}}
     </style></head><body>
     <div class="band"></div>
     <div class="logo">City<em>Pilot</em></div>
@@ -821,6 +843,7 @@ function printIntervention(it){
     <div class="tags"><span>Voie : ${esc(it.voie||'—')}</span><span>Priorité : ${esc(it.priorite||'—')}</span><span>Statut : ${esc(it.statut||'—')}</span><span>Créée le ${fmtD(it.cree)}</span></div>
     <h2>Description</h2><p>${esc(it.desc||'—')}</p>
     <h2>Historique</h2><table>${histo}</table>
+    ${photos?`<h2>Photos</h2><div class="photos">${photos}</div>`:''}
     <div class="foot">Document généré par CityPilot — gestion des services techniques communaux.</div>
     </body></html>`);
   w.document.close(); w.focus();
@@ -840,7 +863,8 @@ async function shareIntervention(it){
     (it.desc||'—'),
     '',
     'Historique :',
-    ...((it.histo||[]).map(h=>`  - ${fmtD(h.d)} : ${h.t}`))
+    ...((it.histo||[]).map(h=>`  - ${fmtD(h.d)} : ${h.t}`)),
+    ...((it.photos&&it.photos.length)?['', `${it.photos.length} photo(s) jointe(s)`]:[])
   ];
   const texte=lignes.join('\n');
   const titre=`Intervention voirie — ${it.type||'CityPilot'}`;
@@ -982,12 +1006,14 @@ function travForm(t,latlng){
   ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
   dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
   $('#tvSave').onclick=()=>{
-    const fd=new FormData($('#tvForm'));const old=t.statut;
+    const fd=new FormData($('#tvForm'));const old=t.statut;const wasNew=isNew;
     ['titre','categorie','priorite','statut','desc'].forEach(k=>t[k]=fd.get(k));
     const h=$('#tvHisto')?.value?.trim();if(h)t.histo.push({d:today(),t:h});
     if(!isNew&&old&&old!==t.statut)t.histo.push({d:today(),t:'Statut : '+old+' → '+t.statut});
     if(isNew)DB.travaux.push(t);
-    save();closeModal();toast('Enregistré');show('travaux');};
+    save();
+    if(wasNew){toast('Travaux créé — vous pouvez l\'imprimer ou le partager');travForm(t);}
+    else{closeModal();toast('Enregistré');show('travaux');}};
   if(!isNew)$('#tvDel').onclick=()=>{DB.travaux=DB.travaux.filter(x=>x.id!==t.id);save();closeModal();show('travaux');};
   if(!isNew)$('#tvPrint').onclick=()=>printTravaux(t);
   if(!isNew)$('#tvShare').onclick=()=>shareTravaux(t);
