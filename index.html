@@ -542,7 +542,12 @@ function buildMap(elId, items, colorKey, onClickItem, onAddPoint){
     mk.bindTooltip(it.nom||it.ref||it.essence||it.type||it.lieu||it.cat||'');
     pts.push([it.lat,it.lng]);
   });
-  if(pts.length)m.fitBounds(pts,{padding:[36,36],maxZoom:17});
+  // Recadrage sur les points seulement s'ils sont cohérents avec la commune connectée.
+  // Sinon (ex. données de démo d'une autre commune), on reste centré sur la commune.
+  const c=mapCenter();
+  const near=pts.filter(p=>Math.abs(p[0]-c[0])<0.3&&Math.abs(p[1]-c[1])<0.3);
+  if(near.length) m.fitBounds(near,{padding:[36,36],maxZoom:17});
+  else m.setView(c,15);
   if(onAddPoint)m.on('click',e=>{if(addMode){addMode=false;document.getElementById(elId).parentElement.classList.remove('addmode');onAddPoint(e.latlng);}});
   mapInst=m;
   return m;
@@ -773,6 +778,7 @@ function interForm(it,latlng){
       <div class="field"><label>Ajouter une entrée à l’historique</label><input id="ivHisto" placeholder="ex. Enrobé à froid posé, à reprendre à chaud au printemps"></div>`}
     </form></div>
     <div class="ft">${isNew?'':'<button class="btn dngr" id="ivDel">Supprimer</button>'}<div style="flex:1"></div>
+      ${isNew?'':'<button class="btn" id="ivPrint">🖨 Imprimer</button><button class="btn" id="ivShare">↗ Partager</button>'}
       <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="ivSave">Enregistrer</button></div>`);
   $('#ivSave').onclick=()=>{
     const fd=new FormData($('#ivForm'));
@@ -781,10 +787,73 @@ function interForm(it,latlng){
     ['type','voie','priorite','statut','desc'].forEach(k=>obj[k]=fd.get(k));
     const h=$('#ivHisto')?.value?.trim();if(h)obj.histo.push({d:today(),t:h});
     if(!isNew&&oldStatut&&oldStatut!==obj.statut)obj.histo.push({d:today(),t:'Statut : '+oldStatut+' → '+obj.statut});
-    if(isNew)DB.interventions.push(obj);
-    save();closeModal();toast('Enregistré');show('voirie');
+    if(isNew){DB.interventions.push(obj);save();toast('Intervention créée — vous pouvez l\'imprimer ou la partager');interForm(obj);}
+    else{save();closeModal();toast('Enregistré');show('voirie');}
   };
   if(!isNew)$('#ivDel').onclick=()=>{DB.interventions=DB.interventions.filter(x=>x.id!==it.id);save();closeModal();show('voirie');};
+  if(!isNew)$('#ivPrint').onclick=()=>printIntervention(it);
+  if(!isNew)$('#ivShare').onclick=()=>shareIntervention(it);
+}
+
+/* Impression d'une fiche intervention voirie : boîte d'impression native (imprimante ou PDF). */
+function printIntervention(it){
+  const commune = session&&session.client ? session.client.commune : 'Commune';
+  const histo = (it.histo||[]).map(h=>`<tr><td class="d">${fmtD(h.d)}</td><td>${esc(h.t)}</td></tr>`).join('')||'<tr><td colspan="2">—</td></tr>';
+  const w=window.open('','_blank','width=900,height=700');
+  if(!w){toast('Autorisez les fenêtres pop-up pour imprimer');return;}
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Intervention voirie — ${esc(it.type)}</title>
+    <style>
+      *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#182226;margin:28px;line-height:1.5}
+      .band{height:8px;background:repeating-linear-gradient(-45deg,#E8620F 0 12px,#1C3B52 12px 24px);margin-bottom:16px}
+      .logo{font-size:22px;font-weight:bold;color:#1C3B52} .logo em{font-style:normal;color:#E8620F}
+      h1{font-size:20px;margin:14px 0 4px} .meta{color:#5C6B70;font-size:13px;margin-bottom:16px}
+      .tags span{display:inline-block;border:1px solid #DBE2E0;border-radius:14px;padding:2px 10px;font-size:12px;margin-right:6px}
+      h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:#5C6B70;border-bottom:1px solid #DBE2E0;padding-bottom:4px;margin:18px 0 8px}
+      p{margin:0 0 8px;white-space:pre-wrap} table{width:100%;border-collapse:collapse;font-size:13px}
+      td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top} td.d{white-space:nowrap;color:#5C6B70;width:110px}
+      .foot{margin-top:24px;font-size:11px;color:#8a9499;border-top:1px solid #DBE2E0;padding-top:8px}
+      @media print{body{margin:12mm}}
+    </style></head><body>
+    <div class="band"></div>
+    <div class="logo">City<em>Pilot</em></div>
+    <h1>Intervention voirie — ${esc(it.type)||''}</h1>
+    <div class="meta">${esc(commune)} · Édité le ${fmtD(today())}</div>
+    <div class="tags"><span>Voie : ${esc(it.voie||'—')}</span><span>Priorité : ${esc(it.priorite||'—')}</span><span>Statut : ${esc(it.statut||'—')}</span><span>Créée le ${fmtD(it.cree)}</span></div>
+    <h2>Description</h2><p>${esc(it.desc||'—')}</p>
+    <h2>Historique</h2><table>${histo}</table>
+    <div class="foot">Document généré par CityPilot — gestion des services techniques communaux.</div>
+    </body></html>`);
+  w.document.close(); w.focus();
+  setTimeout(()=>{ w.print(); }, 300);
+}
+
+/* Partage d'une fiche intervention : partage natif si dispo, sinon copie presse-papiers. */
+async function shareIntervention(it){
+  const commune = session&&session.client ? session.client.commune : 'Commune';
+  const lignes=[
+    `INTERVENTION VOIRIE — ${it.type||''}`,
+    `Commune : ${commune}`,
+    `Voie : ${it.voie||'—'} · Priorité : ${it.priorite||'—'} · Statut : ${it.statut||'—'}`,
+    `Créée le ${fmtD(it.cree)}`,
+    '',
+    'Description :',
+    (it.desc||'—'),
+    '',
+    'Historique :',
+    ...((it.histo||[]).map(h=>`  - ${fmtD(h.d)} : ${h.t}`))
+  ];
+  const texte=lignes.join('\n');
+  const titre=`Intervention voirie — ${it.type||'CityPilot'}`;
+  if(navigator.share){
+    try{ await navigator.share({title:titre, text:texte}); return; }
+    catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  try{
+    await navigator.clipboard.writeText(texte);
+    toast('Récapitulatif copié — collez-le dans un mail ou un message');
+  }catch(e){
+    location.href=`mailto:?subject=${encodeURIComponent(titre)}&body=${encodeURIComponent(texte)}`;
+  }
 }
 </script>
 <script>
