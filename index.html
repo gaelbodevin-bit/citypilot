@@ -407,6 +407,25 @@ const DB = {
 };
 let session = null; // {type:'client'|'admin', client}
 
+/* Fusion « Voirie & interventions » + « Travaux & chantiers » en un module unique « Travaux & interventions ».
+   Les anciennes interventions deviennent des travaux de catégorie « Voirie ». */
+(function mergeInterventions(){
+  if(!Array.isArray(DB.interventions)) return;
+  const mapStatut={'À faire':'À planifier','En cours':'En cours','Terminée':'Terminé'};
+  DB.interventions.forEach(i=>{
+    DB.travaux.push({
+      id:i.id, lat:i.lat, lng:i.lng,
+      titre:i.type||'Intervention', categorie:'Voirie',
+      voie:i.voie||'', priorite:i.priorite||'Moyenne',
+      statut:mapStatut[i.statut]||i.statut||'À planifier',
+      cree:i.cree||today(), desc:(i.voie?('Voie : '+i.voie+'. '):'')+(i.desc||''),
+      photos:i.photos||[], histo:i.histo||[{d:today(),t:'Créé'}],
+      sourceKey:i.sourceKey, sourceDae:i.sourceDae
+    });
+  });
+  DB.interventions=[]; // vidé : tout est désormais dans DB.travaux
+})();
+
 /* ====================== Préférences d'affichage ======================
    Thème (clair/sombre) et mode daltonien, persistés localement. */
 const PREFS = {
@@ -463,8 +482,8 @@ function computeAlerts(){
   });
   DB.signalements.filter(s=>s.statut==='Nouveau').forEach(s=>
     A.push({lvl:'signal',ico:'📢',t:`Nouveau signalement citoyen — ${s.cat}`,d:s.desc,go:'signalements'}));
-  DB.interventions.filter(i=>i.statut==='À faire'&&i.priorite==='Haute').forEach(i=>
-    A.push({lvl:'warn',ico:'🛣️',t:`Intervention voirie prioritaire — ${i.type}`,d:`${i.voie} · créée le ${fmtD(i.cree)}`,go:'voirie'}));
+  DB.travaux.filter(i=>i.statut==='À planifier'&&i.priorite==='Haute').forEach(i=>
+    A.push({lvl:'warn',ico:'🛠️',t:`Travaux prioritaires — ${i.titre}`,d:`${i.categorie}${i.voie?' · '+i.voie:''} · créé le ${fmtD(i.cree)}`,go:'travaux'}));
   DB.bornes.filter(b=>daysTo(b.controle)< -365).forEach(b=>
     A.push({lvl:'warn',ico:'🧯',t:`Contrôle borne incendie > 1 an — ${b.ref}`,d:`Dernier contrôle ${fmtD(b.controle)}`,go:'bornes'}));
   return A;
@@ -479,24 +498,22 @@ function syncDaeInterventions(){
     [['electrodes','Électrodes'],['batterie','Batterie']].forEach(([k,lbl])=>{
       const d=daysTo(x[k]);
       const key='dae:'+x.id+':'+k;
-      const existing=DB.interventions.find(i=>i.sourceKey===key);
+      const existing=DB.travaux.find(i=>i.sourceKey===key);
       if(d<=30){
         if(!existing){
-          DB.interventions.push({
+          DB.travaux.push({
             id:uid(), lat:x.lat, lng:x.lng, sourceKey:key, sourceDae:x.id,
-            type:'Maintenance DAE', voie:x.lieu||'',
-            priorite: d<0?'Haute':'Moyenne', statut:'À faire', cree:today(),
+            titre:`Maintenance DAE — ${lbl.toLowerCase()}`, categorie:'DAE / défibrillateur',
+            priorite: d<0?'Haute':'Moyenne', statut:'À planifier', cree:today(),
             desc:`${lbl} du défibrillateur « ${x.lieu} » ${d<0?'périmé(e)s depuis le '+fmtD(x[k]):'à remplacer avant le '+fmtD(x[k])} — commander et remplacer.`,
-            photos:[], histo:[{d:today(),t:'Créée automatiquement (alerte péremption DAE)'}]
+            photos:[], histo:[{d:today(),t:'Créé automatiquement (alerte péremption DAE)'}]
           });
           created++;
-        } else if(existing.statut==='Terminée'){
-          // le problème réapparaît : on rouvre
-          existing.statut='À faire'; existing.histo.push({d:today(),t:'Rouverte : péremption à nouveau détectée'});
+        } else if(existing.statut==='Terminé'){
+          existing.statut='À planifier'; existing.histo.push({d:today(),t:'Rouvert : péremption à nouveau détectée'});
         }
-      } else if(existing && existing.statut!=='Terminée'){
-        // plus de souci de date : on clôt l'intervention auto
-        existing.statut='Terminée'; existing.histo.push({d:today(),t:'Clôturée automatiquement : consommable à jour'});
+      } else if(existing && existing.statut!=='Terminé'){
+        existing.statut='Terminé'; existing.histo.push({d:today(),t:'Clôturé automatiquement : consommable à jour'});
       }
     });
   });
@@ -544,12 +561,11 @@ const ICONS = {
 const NAV = [
   {sec:'Pilotage'},
   {id:'dash', label:'Tableau de bord', ico:'dash'},
-  {id:'travaux', label:'Travaux & chantiers', ico:'tools', cnt:()=>DB.travaux.filter(t=>t.statut!=='Terminé').length},
+  {id:'travaux', label:'Travaux & interventions', ico:'tools', cnt:()=>DB.travaux.filter(t=>t.statut!=='Terminé').length},
   {id:'signalements', label:'Signalements', ico:'mega', cnt:()=>DB.signalements.filter(s=>s.statut==='Nouveau').length},
   {sec:'Patrimoine cartographié'},
   {id:'arbres', label:'Arbres', ico:'tree'},
   {id:'mobilier', label:'Mobilier urbain', ico:'pin'},
-  {id:'voirie', label:'Voirie & interventions', ico:'road', cnt:()=>DB.interventions.filter(i=>i.statut!=='Terminée').length},
   {id:'armoires', label:'Éclairage public', ico:'bolt'},
   {id:'bornes', label:'Bornes incendie', ico:'fire'},
   {id:'dae', label:'Défibrillateurs', ico:'heart', cnt:()=>DB.dae.filter(x=>daysTo(x.electrodes)<=30||daysTo(x.batterie)<=30).length},
@@ -801,7 +817,7 @@ VIEWS.dash=()=>{
     <div class="kpis">
       ${k(A.length,'Alertes actives',A.length?'<span class="badge b-signal">Action requise</span>':'<span class="badge b-ok">RAS</span>','dash',A.length>0)}
       ${k(DB.signalements.filter(s=>s.statut==='Nouveau').length,'Signalements à traiter','','signalements')}
-      ${k(DB.interventions.filter(i=>i.statut!=='Terminée').length,'Interventions voirie ouvertes','','voirie')}
+      ${k(DB.travaux.filter(i=>i.statut!=='Terminé').length,'Travaux & interventions ouverts','','travaux')}
       ${k(DB.vehicules.length,'Véhicules & engins','','vehicules')}
       ${k(DB.dae.length,'Défibrillateurs','','dae')}
       ${k(DB.arbres.length+DB.mobilier.length+DB.armoires.length+DB.bornes.length,'Points de patrimoine','arbres, mobilier, EP, PI','arbres')}
@@ -858,135 +874,7 @@ VIEWS.batiments=()=>{const cfg={key:'batiments',title:'Bâtiments communaux',col
   fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,nom:p.props.nom||'Bâtiment',surface:p.props.surface||0,erpType:p.props.erpType||'',erpCat:p.props.erpCat||'5',annee:'',energie:'',commission:'',note:''})};
   cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
 
-/* --- Voirie & interventions (avec historique) --- */
-VIEWS.voirie=()=>{const cfg={key:'interventions',title:'Voirie — interventions', filterScope:'voirie',
-  color:it=>workColor(it.statut),
-  legend:'<span><span class="sw" style="background:#C13B2A"></span>À faire</span><span><span class="sw" style="background:#E8620F"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminée</span>',
-  cols:[{h:'Type',r:i=>`<b>${esc(i.type)}</b>`},{h:'Voie',r:i=>esc(i.voie)},{h:'Priorité',r:i=>etatBadge2Prio(i.priorite)},{h:'Créée le',r:i=>fmtD(i.cree)},{h:'Photos',r:i=>i.photos&&i.photos.length?'📷 '+i.photos.length:'—'},{h:'Statut',r:i=>etatBadge(i.statut)},{h:'Description',r:i=>esc(i.desc)}],
-  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,type:p.props.type||'Autre',voie:p.props.voie||'',priorite:'Moyenne',statut:'À faire',cree:today(),desc:p.props.desc||'',photos:[],histo:[{d:today(),t:'Importée depuis QGIS'}]}),
-  form:(it,ll)=>interForm(it,ll)};
-  assetModule(cfg);};
 function etatBadge2Prio(p){return `<span class="badge ${p==='Haute'?'b-danger':p==='Moyenne'?'b-warn':'b-muted'}">${esc(p)}</span>`;}
-function interForm(it,latlng){
-  const isNew=!it;const v=k=>esc(it?.[k]??'');
-  openModal(`
-    <div class="hd"><h2>${isNew?'Nouvelle intervention voirie':'Intervention — '+esc(it.type)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
-    <div class="bd"><form id="ivForm">
-      <div class="grid2">
-        <div class="field"><label>Type</label><select name="type">${['Nid-de-poule','Marquage au sol','Affaissement','Signalisation','Fauchage / élagage','Réseau pluvial','Trottoir','Autre'].map(o=>`<option ${v('type')===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="field"><label>Voie / desserte</label><input name="voie" value="${v('voie')}"></div>
-        <div class="field"><label>Priorité</label><select name="priorite">${['Haute','Moyenne','Basse'].map(o=>`<option ${v('priorite')===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="field"><label>Statut</label><select name="statut">${['À faire','En cours','Terminée'].map(o=>`<option ${v('statut')===o?'selected':''}>${o}</option>`).join('')}</select></div>
-      </div>
-      <div class="field"><label>Description</label><textarea name="desc" rows="2">${v('desc')}</textarea></div>
-      <label>Photos ${isNew?'':`(${(it.photos||[]).length})`}</label>
-      <div class="dropzone" id="ivDrop">📷 Glissez-déposez des photos ici, ou cliquez pour parcourir
-        <input type="file" id="ivFiles" accept="image/*" multiple style="display:none"></div>
-      <div class="thumbs" id="ivThumbs"></div>
-      ${isNew?'':`<label style="margin-top:14px">Historique</label>
-      <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px;max-height:160px;overflow-y:auto">
-        ${(it.histo||[]).map(h=>`<div style="display:flex;gap:10px;padding:3px 0"><span class="mini" style="white-space:nowrap">${fmtD(h.d)}</span><span>${esc(h.t)}</span></div>`).join('')||'<span class="mini">Aucune entrée</span>'}
-      </div>
-      <div class="field"><label>Ajouter une entrée à l’historique</label><input id="ivHisto" placeholder="ex. Enrobé à froid posé, à reprendre à chaud au printemps"></div>`}
-    </form></div>
-    <div class="ft">${isNew?'':'<button class="btn dngr" id="ivDel">Supprimer</button>'}<div style="flex:1"></div>
-      ${isNew?'':'<button class="btn" id="ivPrint">🖨 Imprimer</button><button class="btn" id="ivShare">↗ Partager</button>'}
-      <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="ivSave">Enregistrer</button></div>`);
-  if(it && !it.photos) it.photos=[];
-  // Buffer photos pour une nouvelle intervention (avant enregistrement)
-  const photoBuf = it ? it.photos : (interForm._buf = interForm._buf || []);
-  const renderIvThumbs=()=>{$('#ivThumbs').innerHTML=(photoBuf||[]).map((p,i)=>
-    `<div class="thumb"><img src="${p.data}" alt="${esc(p.name)}"><button class="del" data-i="${i}" title="Retirer">✕</button></div>`).join('');
-    $('#ivThumbs').querySelectorAll('.del').forEach(b=>b.onclick=()=>{photoBuf.splice(+b.dataset.i,1);renderIvThumbs();});};
-  renderIvThumbs();
-  const addIvFiles=files=>{[...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
-    const r=new FileReader();r.onload=()=>{photoBuf.push({name:f.name,data:r.result});renderIvThumbs();};r.readAsDataURL(f);});};
-  const ivdz=$('#ivDrop');
-  ivdz.onclick=()=>$('#ivFiles').click();
-  $('#ivFiles').onchange=e=>addIvFiles(e.target.files);
-  ['dragover','dragenter'].forEach(ev=>ivdz.addEventListener(ev,e=>{e.preventDefault();ivdz.classList.add('over');}));
-  ['dragleave','drop'].forEach(ev=>ivdz.addEventListener(ev,e=>{e.preventDefault();ivdz.classList.remove('over');}));
-  ivdz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addIvFiles(e.dataTransfer.files);});
-  $('#ivSave').onclick=()=>{
-    const fd=new FormData($('#ivForm'));
-    const obj=it||{id:uid(),lat:latlng?.lat,lng:latlng?.lng,cree:today(),histo:[{d:today(),t:'Créée'}],photos:[]};
-    const oldStatut=obj.statut;
-    ['type','voie','priorite','statut','desc'].forEach(k=>obj[k]=fd.get(k));
-    if(isNew){ obj.photos=(interForm._buf||[]).slice(); interForm._buf=[]; }
-    const h=$('#ivHisto')?.value?.trim();if(h)obj.histo.push({d:today(),t:h});
-    if(!isNew&&oldStatut&&oldStatut!==obj.statut)obj.histo.push({d:today(),t:'Statut : '+oldStatut+' → '+obj.statut});
-    if(isNew){DB.interventions.push(obj);save();toast('Intervention créée — vous pouvez l\'imprimer ou la partager');interForm(obj);}
-    else{save();closeModal();toast('Enregistré');show('voirie');}
-  };
-  if(!isNew)$('#ivDel').onclick=()=>{DB.interventions=DB.interventions.filter(x=>x.id!==it.id);save();closeModal();show('voirie');};
-  if(!isNew)$('#ivPrint').onclick=()=>printIntervention(it);
-  if(!isNew)$('#ivShare').onclick=()=>shareIntervention(it);
-}
-
-/* Impression d'une fiche intervention voirie : boîte d'impression native (imprimante ou PDF). */
-function printIntervention(it){
-  const commune = session&&session.client ? session.client.commune : 'Commune';
-  const histo = (it.histo||[]).map(h=>`<tr><td class="d">${fmtD(h.d)}</td><td>${esc(h.t)}</td></tr>`).join('')||'<tr><td colspan="2">—</td></tr>';
-  const photos = (it.photos||[]).map(p=>`<img src="${p.data}" alt="${esc(p.name)}">`).join('');
-  const w=window.open('','_blank','width=900,height=700');
-  if(!w){toast('Autorisez les fenêtres pop-up pour imprimer');return;}
-  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Intervention voirie — ${esc(it.type)}</title>
-    <style>
-      *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#182226;margin:28px;line-height:1.5}
-      .band{height:8px;background:repeating-linear-gradient(-45deg,#E8620F 0 12px,#1C3B52 12px 24px);margin-bottom:16px}
-      .logo{font-size:22px;font-weight:bold;color:#1C3B52} .logo em{font-style:normal;color:#E8620F}
-      h1{font-size:20px;margin:14px 0 4px} .meta{color:#5C6B70;font-size:13px;margin-bottom:16px}
-      .tags span{display:inline-block;border:1px solid #DBE2E0;border-radius:14px;padding:2px 10px;font-size:12px;margin-right:6px}
-      h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:#5C6B70;border-bottom:1px solid #DBE2E0;padding-bottom:4px;margin:18px 0 8px}
-      p{margin:0 0 8px;white-space:pre-wrap} table{width:100%;border-collapse:collapse;font-size:13px}
-      td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top} td.d{white-space:nowrap;color:#5C6B70;width:110px}
-      .foot{margin-top:24px;font-size:11px;color:#8a9499;border-top:1px solid #DBE2E0;padding-top:8px}
-      .photos{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px} .photos img{width:220px;height:165px;object-fit:cover;border:1px solid #DBE2E0;border-radius:6px}
-      @media print{body{margin:12mm} .photos img{width:32%;height:auto}}
-    </style></head><body>
-    <div class="band"></div>
-    <div class="logo">City<em>Pilot</em></div>
-    <h1>Intervention voirie — ${esc(it.type)||''}</h1>
-    <div class="meta">${esc(commune)} · Édité le ${fmtD(today())}</div>
-    <div class="tags"><span>Voie : ${esc(it.voie||'—')}</span><span>Priorité : ${esc(it.priorite||'—')}</span><span>Statut : ${esc(it.statut||'—')}</span><span>Créée le ${fmtD(it.cree)}</span></div>
-    <h2>Description</h2><p>${esc(it.desc||'—')}</p>
-    <h2>Historique</h2><table>${histo}</table>
-    ${photos?`<h2>Photos</h2><div class="photos">${photos}</div>`:''}
-    <div class="foot">Document généré par CityPilot — gestion des services techniques communaux.</div>
-    </body></html>`);
-  w.document.close(); w.focus();
-  setTimeout(()=>{ w.print(); }, 300);
-}
-
-/* Partage d'une fiche intervention : partage natif si dispo, sinon copie presse-papiers. */
-async function shareIntervention(it){
-  const commune = session&&session.client ? session.client.commune : 'Commune';
-  const lignes=[
-    `INTERVENTION VOIRIE — ${it.type||''}`,
-    `Commune : ${commune}`,
-    `Voie : ${it.voie||'—'} · Priorité : ${it.priorite||'—'} · Statut : ${it.statut||'—'}`,
-    `Créée le ${fmtD(it.cree)}`,
-    '',
-    'Description :',
-    (it.desc||'—'),
-    '',
-    'Historique :',
-    ...((it.histo||[]).map(h=>`  - ${fmtD(h.d)} : ${h.t}`)),
-    ...((it.photos&&it.photos.length)?['', `${it.photos.length} photo(s) jointe(s)`]:[])
-  ];
-  const texte=lignes.join('\n');
-  const titre=`Intervention voirie — ${it.type||'CityPilot'}`;
-  if(navigator.share){
-    try{ await navigator.share({title:titre, text:texte}); return; }
-    catch(e){ if(e && e.name==='AbortError') return; }
-  }
-  try{
-    await navigator.clipboard.writeText(texte);
-    toast('Récapitulatif copié — collez-le dans un mail ou un message');
-  }catch(e){
-    location.href=`mailto:?subject=${encodeURIComponent(titre)}&body=${encodeURIComponent(texte)}`;
-  }
-}
 </script>
 <script>
 /* --- Flotte véhicules --- */
@@ -1168,7 +1056,7 @@ function travForm(t,latlng){
     <div class="bd"><form id="tvForm">
       <div class="field"><label>Intitulé</label><input name="titre" value="${v('titre')}" placeholder="ex. Réfection trottoir rue des Écoles"></div>
       <div class="grid3">
-        <div class="field"><label>Catégorie</label><select name="categorie">${['Voirie','Bâtiment','Espaces verts / jeux','Éclairage public','Réseaux (eau, pluvial)','Mobilier urbain','Signalisation','Autre'].map(o=>`<option ${v('categorie')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>Catégorie</label><select name="categorie">${['Voirie','Bâtiment','Espaces verts / jeux','Éclairage public','Réseaux (eau, pluvial)','Mobilier urbain','Signalisation','DAE / défibrillateur','Défense incendie','Autre'].map(o=>`<option ${v('categorie')===o?'selected':''}>${o}</option>`).join('')}</select></div>
         <div class="field"><label>Priorité</label><select name="priorite">${['Haute','Moyenne','Basse'].map(o=>`<option ${v('priorite')===o?'selected':''}>${o}</option>`).join('')}</select></div>
         <div class="field"><label>Statut</label><select name="statut">${['À planifier','En cours','Terminé'].map(o=>`<option ${v('statut')===o?'selected':''}>${o}</option>`).join('')}</select></div>
       </div>
@@ -1304,7 +1192,7 @@ VIEWS.signalements=()=>{
       <td>${esc(s.nom)}<div class="mini">${esc(s.contact)}</div></td><td>${etatBadge(s.statut)}</td>
       <td style="white-space:nowrap">
         ${s.statut!=='Traité'?`<button class="btn sm" data-next="${s.id}">${s.statut==='Nouveau'?'Prendre en charge':'Marquer traité'}</button>`:''}
-        ${s.lat?`<button class="btn sm" data-inter="${s.id}">→ Intervention voirie</button>`:''}
+        ${s.lat?`<button class="btn sm" data-inter="${s.id}">→ Créer un travaux</button>`:''}
         <button class="btn sm dngr" data-delsig="${s.id}" title="Supprimer (RGPD)">🗑</button>
       </td></tr>`).join('')||'<tr><td colspan=6><div class="empty">Aucun signalement</div></td></tr>'}</tbody></table>
     <p class="mini" style="padding:10px 12px">🔒 Pensez à anonymiser ou supprimer les données personnelles une fois le signalement traité (voir Confidentialité & RGPD).</p></div></div>`;
@@ -1317,9 +1205,10 @@ VIEWS.signalements=()=>{
     s.statut=s.statut==='Nouveau'?'En cours':'Traité';save();show('signalements');});
   $('#view').querySelectorAll('[data-inter]').forEach(b=>b.onclick=e=>{e.stopPropagation();
     const s=DB.signalements.find(x=>x.id===b.dataset.inter);
-    DB.interventions.push({id:uid(),lat:s.lat,lng:s.lng,type:'Autre',voie:'',priorite:'Moyenne',statut:'À faire',cree:today(),
-      desc:'[Signalement citoyen] '+s.desc,histo:[{d:today(),t:'Créée depuis un signalement citoyen'}]});
-    s.statut='En cours';save();toast('Intervention voirie créée');show('voirie');});
+    const catMap={'Voirie / chaussée':'Voirie','Éclairage public':'Éclairage public','Propreté / dépôt sauvage':'Autre','Espaces verts / arbre':'Espaces verts / jeux','Mobilier urbain':'Mobilier urbain','Bâtiment communal':'Bâtiment'};
+    DB.travaux.push({id:uid(),lat:s.lat,lng:s.lng,titre:s.cat||'Signalement citoyen',categorie:catMap[s.cat]||'Autre',voie:'',priorite:'Moyenne',statut:'À planifier',cree:today(),
+      desc:'[Signalement citoyen] '+s.desc,photos:[],histo:[{d:today(),t:'Créé depuis un signalement citoyen'}]});
+    s.statut='En cours';save();toast('Travaux créé depuis le signalement');show('travaux');});
 };
 
 /* --- Administration clients --- */
