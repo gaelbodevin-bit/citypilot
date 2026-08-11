@@ -16,6 +16,20 @@
   --warn:#B77A12; --warn-t:#F8EFDB; --danger:#C13B2A; --danger-t:#F9E6E2;
   --r:10px; --shadow:0 1px 3px rgba(24,34,38,.08),0 6px 18px rgba(24,34,38,.06);
 }
+html[data-theme="dark"]{
+  --paper:#141A1E; --panel:#1E262B; --ink:#E7ECEE; --muted:#9BAAB1;
+  --line:#33414A; --bleu:#5A94C0; --bleu-d:#0E1417; --bleu-t:#22323D;
+  --signal:#F0842E; --signal-t:#3A2A1C; --ok:#4FB07A; --ok-t:#1E3328;
+  --warn:#D7A23E; --warn-t:#39301B; --danger:#E06552; --danger-t:#3A211C;
+  --shadow:0 1px 3px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35);
+}
+/* Mode daltonien : palette sûre (bleu/orange distinguables, évite le rouge/vert ambigu) */
+html[data-cb="on"]{
+  --ok:#0072B2; --ok-t:#D9EAF5; --warn:#E69F00; --warn-t:#FBF0DA; --danger:#D55E00; --danger-t:#FBE4D6;
+}
+html[data-cb="on"][data-theme="dark"]{
+  --ok:#56A9E0; --ok-t:#16303F; --warn:#E6A93A; --warn-t:#3A2F17; --danger:#E8794A; --danger-t:#3A241A;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{font-family:'Public Sans',system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5}
@@ -184,7 +198,8 @@ tbody tr{cursor:pointer}
         <div class="field"><label for="loginCode">Identifiant ou e-mail</label>
           <input id="loginCode" autocomplete="username" placeholder="ex. agent@commune.fr" required></div>
         <div class="field"><label for="loginPwd">Mot de passe</label>
-          <input id="loginPwd" type="password" autocomplete="current-password" required></div>
+          <input id="loginPwd" type="password" autocomplete="current-password" required>
+          <p style="text-align:right;margin-top:5px"><a class="link" id="lnkForgot" style="font-size:12.5px">Mot de passe oublié ?</a></p></div>
         <button class="btn pri" style="width:100%;justify-content:center;padding:11px">Se connecter</button>
       </form>
       <div class="login-links">
@@ -364,16 +379,16 @@ const DB = {
   vehicules: [
     {id:uid(), nom:'Camion benne', immat:'FD-482-KL', marque:'Renault Master', annee:2018, km:88400,
      ct:addDays(today(),21), revision:addDays(today(),160), assurance:addDays(today(),300),
-     travaux:[{d:addDays(today(),-90),t:'Vidange + filtres',cout:280,km:85200},{d:addDays(today(),-300),t:'Plaquettes AV',cout:190,km:79000}]},
+     travaux:[{d:addDays(today(),-90),type:'Vidange',t:'Vidange + filtres',cout:280,km:85200},{d:addDays(today(),-300),type:'Réparation',t:'Plaquettes AV',cout:190,km:79000}]},
     {id:uid(), nom:'Fourgon espaces verts', immat:'GH-115-ZN', marque:'Citroën Jumper', annee:2020, km:52300,
      ct:addDays(today(),380), revision:addDays(today(),-12), assurance:addDays(today(),300),
-     travaux:[{d:addDays(today(),-410),t:'Pneus x4',cout:520,km:41000}]},
+     travaux:[{d:addDays(today(),-410),type:'Pneumatiques',t:'Pneus x4',cout:520,km:41000}]},
     {id:uid(), nom:'Tracteur tondeuse', immat:'—', marque:'Kubota BX231', annee:2021, km:1120,
      ct:null, revision:addDays(today(),45), assurance:addDays(today(),300),
-     travaux:[{d:addDays(today(),-60),t:'Affûtage lames + courroie',cout:140,km:1050}]},
+     travaux:[{d:addDays(today(),-60),type:'Entretien',t:'Affûtage lames + courroie',cout:140,km:1050}]},
     {id:uid(), nom:'Véhicule de service', immat:'EK-903-PB', marque:'Peugeot Partner', annee:2016, km:131900,
      ct:addDays(today(),-8), revision:addDays(today(),90), assurance:addDays(today(),300),
-     travaux:[{d:addDays(today(),-30),t:'Batterie',cout:130,km:131000},{d:addDays(today(),-200),t:'Distribution',cout:640,km:124000}]},
+     travaux:[{d:addDays(today(),-30),type:'Réparation',t:'Batterie',cout:130,km:131000},{d:addDays(today(),-200),type:'Révision',t:'Distribution',cout:640,km:124000}]},
   ],
   signalements: [
     {id:uid(), lat:47.3021, lng:0.7534, cat:'Éclairage public', desc:'Lampadaire clignotant rue Nationale, face à la boulangerie',
@@ -391,6 +406,20 @@ const DB = {
   ],
 };
 let session = null; // {type:'client'|'admin', client}
+
+/* ====================== Préférences d'affichage ======================
+   Thème (clair/sombre) et mode daltonien, persistés localement. */
+const PREFS = {
+  get theme(){ try{return localStorage.getItem('cp_theme')||'light';}catch(e){return 'light';} },
+  set theme(v){ try{localStorage.setItem('cp_theme',v);}catch(e){} document.documentElement.setAttribute('data-theme', v); },
+  get cb(){ try{return localStorage.getItem('cp_cb')||'off';}catch(e){return 'off';} },
+  set cb(v){ try{localStorage.setItem('cp_cb',v);}catch(e){} document.documentElement.setAttribute('data-cb', v); }
+};
+function applyPrefs(){
+  document.documentElement.setAttribute('data-theme', PREFS.theme);
+  document.documentElement.setAttribute('data-cb', PREFS.cb);
+}
+applyPrefs();
 
 /* ====================== Intégration Firebase ======================
    Étape A : authentification réelle via Firebase Auth.
@@ -439,6 +468,40 @@ function computeAlerts(){
   DB.bornes.filter(b=>daysTo(b.controle)< -365).forEach(b=>
     A.push({lvl:'warn',ico:'🧯',t:`Contrôle borne incendie > 1 an — ${b.ref}`,d:`Dernier contrôle ${fmtD(b.controle)}`,go:'bornes'}));
   return A;
+}
+
+/* Génère automatiquement une intervention « À faire » pour chaque DAE dont les électrodes
+   ou la batterie sont périmées ou le seront sous 30 jours. Anti-doublon via sourceDae+kind.
+   L'intervention se referme (statut Terminée) automatiquement si le problème est résolu. */
+function syncDaeInterventions(){
+  let created=0;
+  DB.dae.forEach(x=>{
+    [['electrodes','Électrodes'],['batterie','Batterie']].forEach(([k,lbl])=>{
+      const d=daysTo(x[k]);
+      const key='dae:'+x.id+':'+k;
+      const existing=DB.interventions.find(i=>i.sourceKey===key);
+      if(d<=30){
+        if(!existing){
+          DB.interventions.push({
+            id:uid(), lat:x.lat, lng:x.lng, sourceKey:key, sourceDae:x.id,
+            type:'Maintenance DAE', voie:x.lieu||'',
+            priorite: d<0?'Haute':'Moyenne', statut:'À faire', cree:today(),
+            desc:`${lbl} du défibrillateur « ${x.lieu} » ${d<0?'périmé(e)s depuis le '+fmtD(x[k]):'à remplacer avant le '+fmtD(x[k])} — commander et remplacer.`,
+            photos:[], histo:[{d:today(),t:'Créée automatiquement (alerte péremption DAE)'}]
+          });
+          created++;
+        } else if(existing.statut==='Terminée'){
+          // le problème réapparaît : on rouvre
+          existing.statut='À faire'; existing.histo.push({d:today(),t:'Rouverte : péremption à nouveau détectée'});
+        }
+      } else if(existing && existing.statut!=='Terminée'){
+        // plus de souci de date : on clôt l'intervention auto
+        existing.statut='Terminée'; existing.histo.push({d:today(),t:'Clôturée automatiquement : consommable à jour'});
+      }
+    });
+  });
+  if(created) save();
+  return created;
 }
 
 /* ------------------------------ Utilitaires UI ------------------------------ */
@@ -516,6 +579,7 @@ function refreshBell(){
 let currentView='dash';
 function show(v){
   currentView=v;
+  if(session && session.type==='client') syncDaeInterventions();
   renderNav();refreshBell();
   $('#mainNav').querySelectorAll('a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));
   VIEWS[v]?.();
@@ -525,6 +589,44 @@ function show(v){
 /* ------------------------------ Carte générique ------------------------------ */
 const MAPCOLORS={arbres:'#2E7D52',mobilier:'#7B5CB8',voirie:'#E8620F',armoires:'#B77A12',bornes:'#C13B2A',dae:'#0E8A8A',batiments:'#2F5B7C',signalements:'#E8620F'};
 let mapInst=null, addMode=false;
+
+/* Statuts de travail unifiés : rouge = à faire, orange = en cours, vert = réalisé.
+   Chaque module (voirie / travaux) a ses libellés propres mappés sur ces 3 familles. */
+const WORK_COLORS={todo:'#C13B2A', doing:'#E8620F', done:'#2E7D52'};
+const STATUS_FAMILY={
+  'À faire':'todo','En cours':'doing','Terminée':'done',              // interventions voirie
+  'À planifier':'todo','Terminé':'done'                                // travaux (En cours partagé)
+};
+function workColor(statut){ return WORK_COLORS[STATUS_FAMILY[statut]]||'#2F5B7C'; }
+/* Filtres d'affichage par carte : le statut « réalisé » est masqué par défaut. */
+const mapFilters={
+  voirie:{todo:true, doing:true, done:false},
+  travaux:{todo:true, doing:true, done:false}
+};
+/* Barre de cases à cocher pour filtrer la carte par statut. */
+function statusFilterBar(scope){
+  const f=mapFilters[scope];
+  const item=(key,color,label)=>`<label class="consent" style="margin:0;color:var(--ink);align-items:center">
+    <input type="checkbox" data-filter="${key}" ${f[key]?'checked':''}>
+    <span><span class="sw" style="background:${color};display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px;margin-right:5px"></span>${label}</span></label>`;
+  return `<div class="map-tools" style="gap:16px;align-items:center">
+    <span class="mini" style="font-weight:600">Afficher sur la carte :</span>
+    ${item('todo',WORK_COLORS.todo,'À faire')}
+    ${item('doing',WORK_COLORS.doing,'En cours')}
+    ${item('done',WORK_COLORS.done,'Réalisé')}
+    <span class="mini">Le « réalisé » est masqué par défaut pour alléger la carte.</span>
+  </div>`;
+}
+function bindStatusFilter(scopeEl, scope, redraw){
+  scopeEl.querySelectorAll('[data-filter]').forEach(cb=>cb.onchange=()=>{
+    mapFilters[scope][cb.dataset.filter]=cb.checked; redraw();
+  });
+}
+/* Filtre une liste selon les statuts cochés du scope. */
+function filterByStatus(list, scope){
+  const f=mapFilters[scope];
+  return list.filter(it=>{ const fam=STATUS_FAMILY[it.statut]; return fam?f[fam]:true; });
+}
 
 function mapCenter(){
   if(session && session.client && Array.isArray(session.client.centre)) return session.client.centre;
@@ -630,6 +732,10 @@ function importCSV(file, cb){
 function assetModule(cfg){
   $('#pageTitle').textContent=cfg.title;
   const list=DB[cfg.key];
+  const drawMap=()=>{
+    const shown=cfg.filterScope?filterByStatus(list,cfg.filterScope):list;
+    buildMap('assetMap',shown,cfg.color,it=>cfg.form(it),latlng=>cfg.form(null,latlng));
+  };
   $('#view').innerHTML=`
     <div class="map-tools">
       <button class="btn pri" id="btnAdd">＋ Saisir un point sur la carte</button>
@@ -637,13 +743,15 @@ function assetModule(cfg){
       <label class="btn" style="margin:0">⬆ Importer CSV<input type="file" id="fileCSV" accept=".csv,.txt" style="display:none"></label>
       <span class="hint">${cfg.hint||'Import GeoJSON (QGIS) ou CSV. Coordonnées lat/lon (WGS 84) ou X/Y Lambert 93 détectées automatiquement.'}</span>
     </div>
+    ${cfg.filterScope?statusFilterBar(cfg.filterScope):''}
     <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="assetMap"></div>
     ${cfg.legend?`<div class="legend">${cfg.legend}</div>`:''}</div></div>
     <div class="card"><div class="hd"><h2>${cfg.title} — ${list.length} élément(s)</h2><div class="sp"></div>
       <button class="btn sm" id="btnCsv">Exporter CSV</button></div>
       <div class="tbl-wrap"><table><thead><tr>${cfg.cols.map(c=>`<th>${c.h}</th>`).join('')}</tr></thead>
       <tbody>${list.length?list.map(it=>`<tr data-id="${it.id}">${cfg.cols.map(c=>`<td>${c.r(it)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${cfg.cols.length}"><div class="empty">Aucun élément. Saisissez un point sur la carte ou importez un GeoJSON.</div></td></tr>`}</tbody></table></div></div>`;
-  buildMap('assetMap',list,cfg.color,it=>cfg.form(it),latlng=>cfg.form(null,latlng));
+  drawMap();
+  if(cfg.filterScope)bindStatusFilter($('#view'),cfg.filterScope,drawMap);
   $('#btnAdd').onclick=()=>{addMode=true;$('#assetMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le point');};
   $('#fileGJ').onchange=e=>{if(e.target.files[0])importGeoJSON(e.target.files[0],pts=>{
     pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s)');show(cfg.key);});};
@@ -751,9 +859,9 @@ VIEWS.batiments=()=>{const cfg={key:'batiments',title:'Bâtiments communaux',col
   cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
 
 /* --- Voirie & interventions (avec historique) --- */
-VIEWS.voirie=()=>{const cfg={key:'interventions',title:'Voirie — interventions',
-  color:it=>({'À faire':'#C13B2A','En cours':'#B77A12','Terminée':'#2E7D52'})[it.statut],
-  legend:'<span><span class="sw" style="background:#C13B2A"></span>À faire</span><span><span class="sw" style="background:#B77A12"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminée</span>',
+VIEWS.voirie=()=>{const cfg={key:'interventions',title:'Voirie — interventions', filterScope:'voirie',
+  color:it=>workColor(it.statut),
+  legend:'<span><span class="sw" style="background:#C13B2A"></span>À faire</span><span><span class="sw" style="background:#E8620F"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminée</span>',
   cols:[{h:'Type',r:i=>`<b>${esc(i.type)}</b>`},{h:'Voie',r:i=>esc(i.voie)},{h:'Priorité',r:i=>etatBadge2Prio(i.priorite)},{h:'Créée le',r:i=>fmtD(i.cree)},{h:'Photos',r:i=>i.photos&&i.photos.length?'📷 '+i.photos.length:'—'},{h:'Statut',r:i=>etatBadge(i.statut)},{h:'Description',r:i=>esc(i.desc)}],
   fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,type:p.props.type||'Autre',voie:p.props.voie||'',priorite:'Moyenne',statut:'À faire',cree:today(),desc:p.props.desc||'',photos:[],histo:[{d:today(),t:'Importée depuis QGIS'}]}),
   form:(it,ll)=>interForm(it,ll)};
@@ -903,7 +1011,7 @@ function vehForm(v){
   openModal(`
     <div class="hd"><h2>${isNew?'Nouveau véhicule':esc(v.nom)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
     <div class="bd">
-      <div class="tabs"><button class="on" data-t="infos">Fiche</button>${isNew?'':'<button data-t="trav">Travaux & entretien</button>'}</div>
+      <div class="tabs"><button class="on" data-t="infos">Fiche</button>${isNew?'':'<button data-t="trav">Carnet de suivi</button><button data-t="repo">Reporting</button>'}</div>
       <div id="vt-infos"><form id="vhForm"><div class="grid2">
         <div class="field"><label>Nom d’usage</label><input name="nom" value="${g('nom')}" required></div>
         <div class="field"><label>Immatriculation</label><input name="immat" value="${g('immat')}"></div>
@@ -915,33 +1023,115 @@ function vehForm(v){
         <div class="field"><label>Échéance assurance</label><input name="assurance" type="date" value="${g('assurance')}"></div>
       </div></form></div>
       ${isNew?'':`<div id="vt-trav" style="display:none">
-        <table style="margin-bottom:14px"><thead><tr><th>Date</th><th>Travaux</th><th>Km</th><th>Coût</th></tr></thead>
-        <tbody>${v.travaux.map(t=>`<tr style="cursor:default"><td>${fmtD(t.d)}</td><td>${esc(t.t)}</td><td>${t.km?(+t.km).toLocaleString('fr-FR'):'—'}</td><td>${t.cout?t.cout+' €':'—'}</td></tr>`).join('')||'<tr><td colspan=4 class="empty">Aucun travail enregistré</td></tr>'}</tbody></table>
+        <table style="margin-bottom:14px"><thead><tr><th>Date</th><th>Type</th><th>Opération</th><th>Km</th><th>Coût</th><th></th></tr></thead>
+        <tbody>${(v.travaux||[]).map((t,idx)=>`<tr style="cursor:default"><td>${fmtD(t.d)}</td><td>${t.type?`<span class="badge b-bleu">${esc(t.type)}</span>`:'—'}</td><td>${esc(t.t)}</td><td>${t.km?(+t.km).toLocaleString('fr-FR'):'—'}</td><td>${t.cout?(+t.cout)+' €':'—'}</td><td><button class="btn sm dngr" data-delop="${idx}" title="Supprimer">✕</button></td></tr>`).join('')||'<tr><td colspan=6 class="empty">Aucune opération enregistrée</td></tr>'}</tbody></table>
         <div class="grid3">
           <div class="field"><label>Date</label><input id="twD" type="date" value="${today()}"></div>
-          <div class="field"><label>Km</label><input id="twKm" type="number"></div>
+          <div class="field"><label>Type d'opération</label><select id="twType">${['Entretien','Révision','Réparation','Pneumatiques','Vidange','Carrosserie','Contrôle technique','Autre'].map(o=>`<option>${o}</option>`).join('')}</select></div>
+          <div class="field"><label>Km / heures</label><input id="twKm" type="number"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Description</label><input id="twT" placeholder="ex. Vidange + filtres, plaquettes AV…"></div>
           <div class="field"><label>Coût (€)</label><input id="twC" type="number"></div>
         </div>
-        <div class="field"><label>Description des travaux</label><input id="twT" placeholder="ex. Vidange, plaquettes, réparation hayon…"></div>
-        <button class="btn" id="twAdd">＋ Ajouter aux travaux</button>
-      </div>`}
+        <button class="btn pri" id="twAdd">＋ Ajouter au carnet</button>
+      </div>
+      <div id="vt-repo" style="display:none">${vehReport(v)}</div>`}
     </div>
     <div class="ft">${isNew?'':'<button class="btn dngr" id="vhDel">Supprimer</button>'}<div style="flex:1"></div>
+      ${isNew?'':'<button class="btn" id="vhPrint">🖨 Imprimer le carnet</button>'}
       <button class="btn" onclick="closeModal()">Fermer</button><button class="btn pri" id="vhSave">Enregistrer</button></div>`);
   document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
     $('#vt-infos').style.display=b.dataset.t==='infos'?'block':'none';
-    if($('#vt-trav'))$('#vt-trav').style.display=b.dataset.t==='trav'?'block':'none';});
+    if($('#vt-trav'))$('#vt-trav').style.display=b.dataset.t==='trav'?'block':'none';
+    if($('#vt-repo'))$('#vt-repo').style.display=b.dataset.t==='repo'?'block':'none';});
+  if(!isNew){
+    $('#vt-trav')&&$('#vt-trav').querySelectorAll('[data-delop]').forEach(btn=>btn.onclick=()=>{
+      v.travaux.splice(+btn.dataset.delop,1);save();vehForm(v);document.querySelector('[data-t=trav]').click();});
+  }
   if(!isNew&&$('#twAdd'))$('#twAdd').onclick=()=>{
-    if(!$('#twT').value.trim())return toast('Décrivez les travaux');
-    v.travaux.unshift({d:$('#twD').value,t:$('#twT').value,km:$('#twKm').value,cout:$('#twC').value});
-    save();toast('Travaux ajoutés');vehForm(v);document.querySelector('[data-t=trav]').click();};
+    if(!$('#twT').value.trim())return toast('Décrivez l\'opération');
+    if(!v.travaux)v.travaux=[];
+    v.travaux.unshift({d:$('#twD').value,type:$('#twType').value,t:$('#twT').value,km:$('#twKm').value,cout:$('#twC').value});
+    save();toast('Opération ajoutée au carnet');vehForm(v);document.querySelector('[data-t=trav]').click();};
   $('#vhSave').onclick=()=>{
     const fd=new FormData($('#vhForm'));const obj=v||{id:uid(),travaux:[]};
     ['nom','immat','marque','annee','km','ct','revision','assurance'].forEach(k=>obj[k]=fd.get(k)||null);
     if(isNew)DB.vehicules.push(obj);
     save();closeModal();toast('Enregistré');show('vehicules');};
   if(!isNew)$('#vhDel').onclick=()=>{DB.vehicules=DB.vehicules.filter(x=>x.id!==v.id);save();closeModal();show('vehicules');};
+  if(!isNew)$('#vhPrint').onclick=()=>printVehicule(v);
+}
+
+/* Reporting par véhicule : synthèse + ventilation par année, par mois de l'année en cours, et par type d'opération. */
+function vehReport(v){
+  const ops=(v.travaux||[]).filter(o=>o.d);
+  if(!ops.length) return '<div class="empty">Aucune opération à analyser. Ajoutez des entrées au carnet de suivi.</div>';
+  const cout=o=>+o.cout||0;
+  const total=ops.reduce((s,o)=>s+cout(o),0);
+  const byYear={}, byType={}, curY=new Date().getFullYear(), byMonth={};
+  ops.forEach(o=>{
+    const d=new Date(o.d); const y=d.getFullYear();
+    byYear[y]=(byYear[y]||{n:0,c:0}); byYear[y].n++; byYear[y].c+=cout(o);
+    const ty=o.type||'Autre'; byType[ty]=(byType[ty]||{n:0,c:0}); byType[ty].n++; byType[ty].c+=cout(o);
+    if(y===curY){const m=d.getMonth(); byMonth[m]=(byMonth[m]||{n:0,c:0}); byMonth[m].n++; byMonth[m].c+=cout(o);}
+  });
+  const eur=n=>n.toLocaleString('fr-FR')+' €';
+  const mois=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+  const years=Object.keys(byYear).sort((a,b)=>b-a);
+  const maxYearC=Math.max(...years.map(y=>byYear[y].c),1);
+  return `
+    <div class="kpis" style="margin-bottom:16px">
+      <div class="kpi"><div class="n">${ops.length}</div><div class="l">Opérations totales</div></div>
+      <div class="kpi"><div class="n">${eur(total)}</div><div class="l">Coût cumulé</div></div>
+      <div class="kpi"><div class="n">${eur(Math.round(total/ops.length))}</div><div class="l">Coût moyen / opération</div></div>
+      <div class="kpi"><div class="n">${byYear[curY]?eur(byYear[curY].c):'0 €'}</div><div class="l">Dépenses ${curY}</div></div>
+    </div>
+    <h2 style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:6px 0 8px">Par année</h2>
+    <table style="margin-bottom:16px"><thead><tr><th>Année</th><th>Opérations</th><th>Coût</th><th style="width:40%"></th></tr></thead><tbody>
+    ${years.map(y=>`<tr style="cursor:default"><td><b>${y}</b></td><td>${byYear[y].n}</td><td>${eur(byYear[y].c)}</td>
+      <td><div style="background:var(--bleu);height:10px;border-radius:5px;width:${Math.round(byYear[y].c/maxYearC*100)}%"></div></td></tr>`).join('')}
+    </tbody></table>
+    <h2 style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:6px 0 8px">Par type d'opération</h2>
+    <table style="margin-bottom:16px"><thead><tr><th>Type</th><th>Nombre</th><th>Coût</th></tr></thead><tbody>
+    ${Object.keys(byType).sort((a,b)=>byType[b].c-byType[a].c).map(ty=>`<tr style="cursor:default"><td>${esc(ty)}</td><td>${byType[ty].n}</td><td>${eur(byType[ty].c)}</td></tr>`).join('')}
+    </tbody></table>
+    <h2 style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:6px 0 8px">Mensuel ${curY}</h2>
+    <table><thead><tr><th>Mois</th><th>Opérations</th><th>Coût</th></tr></thead><tbody>
+    ${Object.keys(byMonth).length?Object.keys(byMonth).sort((a,b)=>a-b).map(m=>`<tr style="cursor:default"><td>${mois[m]}</td><td>${byMonth[m].n}</td><td>${eur(byMonth[m].c)}</td></tr>`).join(''):`<tr><td colspan=3 class="empty">Aucune opération en ${curY}</td></tr>`}
+    </tbody></table>`;
+}
+
+/* Impression du carnet complet d'un véhicule (boîte native imprimante/PDF). */
+function printVehicule(v){
+  const commune = session&&session.client ? session.client.commune : 'Commune';
+  const ops=(v.travaux||[]);
+  const total=ops.reduce((s,o)=>s+(+o.cout||0),0);
+  const rows=ops.map(o=>`<tr><td class="d">${fmtD(o.d)}</td><td>${esc(o.type||'—')}</td><td>${esc(o.t)}</td><td>${o.km?(+o.km).toLocaleString('fr-FR'):'—'}</td><td>${o.cout?(+o.cout)+' €':'—'}</td></tr>`).join('')||'<tr><td colspan=5>Aucune opération</td></tr>';
+  const w=window.open('','_blank','width=900,height=700');
+  if(!w){toast('Autorisez les fenêtres pop-up pour imprimer');return;}
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Carnet — ${esc(v.nom)}</title>
+    <style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#182226;margin:28px;line-height:1.5}
+    .band{height:8px;background:repeating-linear-gradient(-45deg,#E8620F 0 12px,#1C3B52 12px 24px);margin-bottom:16px}
+    .logo{font-size:22px;font-weight:bold;color:#1C3B52}.logo em{font-style:normal;color:#E8620F}
+    h1{font-size:20px;margin:14px 0 4px}.meta{color:#5C6B70;font-size:13px;margin-bottom:16px}
+    .tags span{display:inline-block;border:1px solid #DBE2E0;border-radius:14px;padding:2px 10px;font-size:12px;margin-right:6px}
+    h2{font-size:14px;text-transform:uppercase;color:#5C6B70;border-bottom:1px solid #DBE2E0;padding-bottom:4px;margin:18px 0 8px}
+    table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#5C6B70;font-size:11px;text-transform:uppercase;padding:6px 8px;border-bottom:2px solid #DBE2E0}
+    td{padding:5px 8px;border-bottom:1px solid #eee}td.d{white-space:nowrap;color:#5C6B70}
+    .tot{margin-top:10px;font-weight:bold}.foot{margin-top:24px;font-size:11px;color:#8a9499;border-top:1px solid #DBE2E0;padding-top:8px}
+    @media print{body{margin:12mm}}</style></head><body>
+    <div class="band"></div><div class="logo">City<em>Pilot</em></div>
+    <h1>Carnet de suivi — ${esc(v.nom)}</h1>
+    <div class="meta">${esc(commune)} · Édité le ${fmtD(today())}</div>
+    <div class="tags"><span>${esc(v.marque||'')}</span><span>Immat. ${esc(v.immat||'—')}</span><span>Année ${esc(v.annee||'—')}</span><span>${v.km?(+v.km).toLocaleString('fr-FR')+' km':''}</span></div>
+    <h2>Opérations (${ops.length})</h2>
+    <table><thead><tr><th>Date</th><th>Type</th><th>Opération</th><th>Km</th><th>Coût</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="tot">Coût cumulé : ${total.toLocaleString('fr-FR')} €</p>
+    <div class="foot">Document généré par CityPilot — gestion des services techniques communaux.</div>
+    </body></html>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),300);
 }
 
 /* --- Travaux & chantiers (carte généraliste + photos) --- */
@@ -949,13 +1139,15 @@ const TRAV_COL={'À planifier':'#B77A12','En cours':'#2F5B7C','Terminé':'#2E7D5
 VIEWS.travaux=()=>{
   $('#pageTitle').textContent='Travaux & chantiers';
   const list=DB.travaux;
+  const drawTravMap=()=>buildMap('travMap',filterByStatus(list,'travaux'),t=>workColor(t.statut),t=>travForm(t),latlng=>travForm(null,latlng));
   $('#view').innerHTML=`
     <div class="map-tools">
       <button class="btn pri" id="btnAddT">＋ Nouveau travaux (point sur la carte)</button>
       <span class="hint">Carte généraliste tous domaines : décrivez ce qu'il faut faire, ajoutez des photos, suivez l'avancement.</span>
     </div>
+    ${statusFilterBar('travaux')}
     <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="travMap"></div>
-      <div class="legend"><span><span class="sw" style="background:#B77A12"></span>À planifier</span><span><span class="sw" style="background:#2F5B7C"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminé</span></div>
+      <div class="legend"><span><span class="sw" style="background:#C13B2A"></span>À planifier</span><span><span class="sw" style="background:#E8620F"></span>En cours</span><span><span class="sw" style="background:#2E7D52"></span>Terminé</span></div>
     </div></div>
     <div class="card"><div class="hd"><h2>${list.length} travaux</h2></div>
     <div class="tbl-wrap"><table><thead><tr><th>Intitulé</th><th>Catégorie</th><th>Priorité</th><th>Créé le</th><th>Photos</th><th>Statut</th></tr></thead>
@@ -963,7 +1155,8 @@ VIEWS.travaux=()=>{
       <td><b>${esc(t.titre)}</b></td><td>${esc(t.categorie)}</td><td>${etatBadge2Prio(t.priorite)}</td>
       <td>${fmtD(t.cree)}</td><td>${t.photos&&t.photos.length?'📷 '+t.photos.length:'—'}</td><td>${etatBadge(t.statut)}</td></tr>`).join('')
     :'<tr><td colspan="6"><div class="empty">Aucun travaux. Cliquez sur « Nouveau travaux ».</div></td></tr>'}</tbody></table></div></div>`;
-  buildMap('travMap',list,t=>TRAV_COL[t.statut]||'#2F5B7C',t=>travForm(t),latlng=>travForm(null,latlng));
+  drawTravMap();
+  bindStatusFilter($('#view'),'travaux',drawTravMap);
   $('#btnAddT').onclick=()=>{addMode=true;$('#travMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le chantier');};
   $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>travForm(list.find(x=>x.id===tr.dataset.id)));
 };
@@ -1223,35 +1416,63 @@ function userFormModal(client,u,rerender){
 /* --- Paramètres & intégrations --- */
 VIEWS.params=()=>{
   $('#pageTitle').textContent='Paramètres & intégrations';
+  const isPlatform=session.type==='admin';
+  const billing = isPlatform ? billingSummary() : '';
   $('#view').innerHTML=`
     <div class="grid2" style="align-items:start">
+      <div class="card"><div class="hd"><h2>🎨 Apparence</h2></div><div class="bd">
+        <div class="field"><label>Thème</label>
+          <select id="setTheme"><option value="light">Clair</option><option value="dark">Sombre</option></select></div>
+        <label class="consent" style="color:var(--ink)"><input type="checkbox" id="setCb"><span>Mode daltonien (palette à contraste sûr pour les statuts)</span></label>
+        <div class="field" style="margin-top:10px"><label>Langue</label>
+          <select id="setLang" disabled><option>Français</option><option>English (à venir)</option></select>
+          <p class="mini" style="margin-top:4px">Le multilingue sera activé dans une prochaine version.</p></div>
+      </div></div>
+      <div class="card"><div class="hd"><h2>🔒 Mot de passe & sécurité</h2></div><div class="bd">
+        ${session.type==='client'?`
+          <p style="margin-bottom:10px">Modifier le mot de passe du compte connecté (${esc(session.user?session.user.nom||session.user.ident:'')}).</p>
+          <div class="field"><label>Nouveau mot de passe</label><input id="pwNew" type="password" placeholder="••••••••"></div>
+          <div class="field"><label>Confirmer</label><input id="pwNew2" type="password" placeholder="••••••••"></div>
+          <button class="btn pri" id="pwSave">Changer le mot de passe</button>
+          <p class="mini" style="margin-top:8px">En mode démo, le changement reste local à la session. Avec Firebase, il sera appliqué au compte réel et un e-mail de réinitialisation restera disponible depuis l'écran de connexion.</p>`
+        :`<p class="mini">La gestion des mots de passe des communes se fait via leurs fiches (panel Clients & abonnements) ou, en production, via Firebase Auth.</p>`}
+      </div></div>
+    </div>
+    ${isPlatform?`<div class="card" style="margin-top:18px"><div class="hd"><h2>💶 Bilan de facturation</h2></div><div class="bd">${billing}</div></div>`:''}
+    <div class="grid2" style="align-items:start;margin-top:18px">
       <div class="card"><div class="hd"><h2>🔥 Firebase (comptes & données)</h2></div><div class="bd">
         <p style="margin-bottom:10px">Statut : <span class="badge ${FB.mode==='firebase'?'b-ok':'b-warn'}">${FB.mode==='firebase'?'Connecté (Auth active · persistance Firestore en cours d\'intégration)':'Mode démo (données en mémoire)'}</span></p>
-        <p class="mini" style="margin-bottom:10px">Pour passer en production :</p>
-        <ol style="padding-left:18px;font-size:13px;line-height:1.9">
-          <li>Créer un projet sur console.firebase.google.com</li>
-          <li>Activer <b>Authentication</b> (email/mot de passe) et <b>Cloud Firestore</b></li>
-          <li>Coller la configuration dans la constante <code>FIREBASE_CONFIG</code> du fichier index.html</li>
-          <li>Définir les règles Firestore : chaque client ne lit/écrit que <code>/clients/{codeClient}/…</code></li>
-          <li>Remplacer les fonctions <code>save()</code>/<code>load()</code> par les appels Firestore (voir README)</li>
-        </ol>
+        <p class="mini">Authentication et Firestore sont activés sur le projet. Reste à finaliser : règles de sécurité, persistance des données et création de comptes in-app.</p>
       </div></div>
       <div class="card"><div class="hd"><h2>💳 Stripe (abonnements)</h2></div><div class="bd">
         <p style="margin-bottom:10px">Statut : <span class="badge ${STRIPE_PAYMENT_LINK?'b-ok':'b-warn'}">${STRIPE_PAYMENT_LINK?'Configuré':'Non configuré'}</span></p>
-        <p class="mini" style="margin-bottom:10px">Architecture recommandée (GitHub Pages = site statique, la partie paiement passe par Stripe et une Cloud Function) :</p>
-        <ol style="padding-left:18px;font-size:13px;line-height:1.9">
-          <li>Créer les produits/tarifs dans Stripe (abonnement annuel par strate de commune)</li>
-          <li>Utiliser des <b>Payment Links</b> ou Stripe Checkout pour l’encaissement</li>
-          <li>Déployer une <b>Cloud Function Firebase</b> qui reçoit les webhooks Stripe (<code>invoice.paid</code>, <code>customer.subscription.deleted</code>) et met à jour le statut du client dans Firestore</li>
-          <li>À la connexion, l’app vérifie <code>abo === 'actif'</code> ou <code>'essai'</code> avant d’ouvrir l’accès</li>
-        </ol>
+        <p class="mini">Pour les communes (paiement souvent sur mandat administratif), le statut d'abonnement peut être géré manuellement ; Stripe reste optionnel pour la CB/le prélèvement.</p>
       </div></div>
     </div>
     <div class="card" style="margin-top:18px"><div class="hd"><h2>Sauvegarde locale</h2></div><div class="bd">
       <button class="btn" id="btnExport">⬇ Exporter toutes les données (JSON)</button>
       <label class="btn" style="margin-left:8px">⬆ Restaurer un export<input type="file" id="fileImp" accept=".json" style="display:none"></label>
-      <p class="mini" style="margin-top:8px">En mode démo, exportez régulièrement vos données : elles ne sont pas conservées entre deux sessions tant que Firebase n’est pas branché.</p>
+      <p class="mini" style="margin-top:8px">En mode démo, exportez régulièrement vos données : elles ne sont pas conservées entre deux sessions tant que Firebase n'est pas branché.</p>
     </div></div>`;
+  // Apparence
+  $('#setTheme').value=PREFS.theme;
+  $('#setTheme').onchange=e=>{PREFS.theme=e.target.value;toast('Thème appliqué');};
+  $('#setCb').checked=PREFS.cb==='on';
+  $('#setCb').onchange=e=>{PREFS.cb=e.target.checked?'on':'off';toast('Préférence enregistrée');};
+  // Mot de passe (démo : local à la session)
+  if($('#pwSave'))$('#pwSave').onclick=async()=>{
+    const a=$('#pwNew').value, b=$('#pwNew2').value;
+    if(a.length<6)return toast('6 caractères minimum');
+    if(a!==b)return toast('Les deux mots de passe diffèrent');
+    if(FB.mode==='firebase'&&FB.auth.currentUser){
+      try{await FB.auth.currentUser.updatePassword(a);toast('Mot de passe modifié');}
+      catch(err){toast('Erreur : '+(err.code||err.message)+' (reconnexion parfois requise)');}
+    }else{
+      if(session.user)session.user.pwd=a;
+      toast('Mot de passe modifié (démo, local à la session)');
+    }
+    $('#pwNew').value='';$('#pwNew2').value='';
+  };
   $('#btnExport').onclick=()=>{
     const a=document.createElement('a');
     a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(DB,null,2));
@@ -1259,6 +1480,29 @@ VIEWS.params=()=>{
   $('#fileImp').onchange=e=>{const f=e.target.files[0];if(!f)return;
     const r=new FileReader();r.onload=()=>{try{Object.assign(DB,JSON.parse(r.result));toast('Données restaurées');show('dash');}catch{toast('Fichier invalide');}};r.readAsText(f);};
 };
+
+/* Bilan de facturation (admin plateforme) : synthèse des abonnements. */
+function billingSummary(){
+  const cs=DB.clients;
+  const actifs=cs.filter(c=>c.abo==='actif').length, essais=cs.filter(c=>c.abo==='essai').length, susp=cs.filter(c=>c.abo==='suspendu').length;
+  // Tarif indicatif par formule (paramétrable ultérieurement)
+  const tarifs={'Essai gratuit 30 j':0,'Commune < 2 000 hab.':490,'Commune < 5 000 hab.':790,'Commune < 10 000 hab.':1190,'Commune 10 000+ hab.':1890};
+  const caAnnuel=cs.filter(c=>c.abo==='actif').reduce((s,c)=>s+(tarifs[c.plan]||0),0);
+  const eur=n=>n.toLocaleString('fr-FR')+' €';
+  const rows=cs.map(c=>`<tr style="cursor:default"><td><b>${esc(c.code)}</b></td><td>${esc(c.commune)}</td><td>${esc(c.plan)}</td>
+    <td>${etatBadge(c.abo)}</td><td>${dateBadge(c.echeance)}</td><td>${c.abo==='actif'?eur(tarifs[c.plan]||0)+'/an':'—'}</td></tr>`).join('');
+  return `
+    <div class="kpis" style="margin-bottom:16px">
+      <div class="kpi"><div class="n">${cs.length}</div><div class="l">Communes</div></div>
+      <div class="kpi"><div class="n">${actifs}</div><div class="l">Abonnements actifs</div></div>
+      <div class="kpi"><div class="n">${essais}</div><div class="l">En essai</div></div>
+      <div class="kpi ${susp?'alert':''}"><div class="n">${susp}</div><div class="l">Suspendus</div></div>
+      <div class="kpi"><div class="n">${eur(caAnnuel)}</div><div class="l">CA annuel récurrent (est.)</div></div>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Commune</th><th>Formule</th><th>Statut</th><th>Échéance</th><th>Montant</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <p class="mini" style="margin-top:8px">Tarifs indicatifs par strate de population, à ajuster selon votre grille. Le CA récurrent estimé additionne les abonnements actifs.</p>`;
+}
 
 /* --- Confidentialité & RGPD --- */
 VIEWS.rgpd=()=>{
@@ -1502,6 +1746,26 @@ $('#lnkPublic').onclick=()=>{
   }else setTimeout(()=>pubMap.invalidateSize(),100);
 };
 $('#lnkAdmin').onclick=()=>{$('#loginCode').value='ADMIN';$('#loginPwd').focus();};
+$('#lnkForgot').onclick=async()=>{
+  const email=($('#loginCode').value||'').trim();
+  const isEmail=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  if(!isEmail){
+    toast('Saisissez d\'abord votre e-mail dans le champ « Identifiant ou e-mail »');
+    $('#loginCode').focus();return;
+  }
+  if(FB.mode!=='firebase'){
+    toast('Réinitialisation indisponible en mode démo (comptes e-mail Firebase requis)');return;
+  }
+  try{
+    await FB.auth.sendPasswordResetEmail(email);
+    toast('E-mail de réinitialisation envoyé à '+email+' (vérifiez vos spams)');
+  }catch(err){
+    const map={'auth/user-not-found':'Aucun compte associé à cet e-mail','auth/invalid-email':'E-mail invalide','auth/too-many-requests':'Trop de demandes, réessayez plus tard'};
+    // Note : Firebase peut renvoyer user-not-found ; par sécurité on reste discret
+    if(err.code==='auth/user-not-found') toast('Si un compte existe pour cet e-mail, un lien a été envoyé');
+    else toast(map[err.code]||('Erreur : '+(err.code||err.message)));
+  }
+};
 $('#pubBack').onclick=()=>{$('#publicScreen').style.display='none';$('#loginScreen').style.display='flex';};
 $('#pubSend').onclick=()=>{
   const desc=$('#pubDesc').value.trim();
