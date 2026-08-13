@@ -35,7 +35,7 @@ html,body{height:100%}
 body{font-family:'Public Sans',system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5}
 h1,h2,h3,.disp{font-family:'Barlow Semi Condensed',sans-serif;letter-spacing:.01em}
 button{font-family:inherit;cursor:pointer}
-input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);width:100%}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--bleu);outline-offset:1px;border-color:var(--bleu)}
 label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
 .field{margin-bottom:12px}
@@ -44,7 +44,7 @@ label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bot
 @media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
 
 /* ---- boutons ---- */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13px;color:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-weight:600;font-size:13px;color:var(--ink)}
 .btn:hover{border-color:var(--bleu);color:var(--bleu)}
 .btn.pri{background:var(--bleu);border-color:var(--bleu);color:#fff}
 .btn.pri:hover{background:var(--bleu-d)}
@@ -141,7 +141,7 @@ tbody tr{cursor:pointer}
 /* ---- modale ---- */
 .modal-bg{position:fixed;inset:0;background:rgba(20,30,36,.5);display:none;align-items:flex-start;justify-content:center;z-index:2000;padding:40px 16px;overflow-y:auto}
 .modal-bg.on{display:flex}
-.modal{background:#fff;border-radius:14px;width:560px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal{background:var(--panel);border-radius:14px;width:560px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .modal .hd{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
 .modal .hd h2{font-size:18px;flex:1}
 .modal .bd{padding:20px;max-height:70vh;overflow-y:auto}
@@ -163,7 +163,7 @@ tbody tr{cursor:pointer}
 .thumb{position:relative;width:78px;height:78px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
 .thumb img{width:100%;height:100%;object-fit:cover}
 .thumb .del{position:absolute;top:2px;right:2px;background:rgba(20,30,36,.75);color:#fff;border:none;border-radius:6px;width:20px;height:20px;font-size:12px;line-height:1;cursor:pointer}
-.legal{max-width:820px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:28px 32px;line-height:1.7}
+.legal{max-width:820px;margin:0 auto;background:var(--panel);border-radius:12px;box-shadow:var(--shadow);padding:28px 32px;line-height:1.7}
 .legal h1{font-size:26px;margin-bottom:6px}
 .legal h2{font-size:18px;margin:22px 0 6px}
 .legal .todo{background:var(--warn-t);color:var(--warn);border-radius:6px;padding:1px 6px;font-weight:700;font-size:12.5px}
@@ -775,6 +775,7 @@ function assetModule(cfg){
     pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s) depuis le CSV');show(cfg.key);});};
   $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>cfg.form(list.find(x=>x.id===tr.dataset.id)));
   $('#btnCsv').onclick=()=>{
+    if(cfg.exportCsv){ cfg.exportCsv(list); return; }
     const rows=[cfg.cols.map(c=>c.h).join(';')].concat(list.map(it=>cfg.cols.map(c=>String(c.r(it)).replace(/<[^>]*>/g,'')).join(';')));
     const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(rows.join('\n'));
     a.download=cfg.key+'.csv';a.click();
@@ -882,18 +883,40 @@ VIEWS.vehicules=()=>{
   $('#pageTitle').textContent='Flotte véhicules & engins';
   $('#view').innerHTML=`
     <div class="map-tools"><button class="btn pri" id="btnVeh">＋ Ajouter un véhicule</button>
+      <button class="btn" id="btnVehCsv">⬇ Exporter la flotte (CSV)</button>
       <span class="hint">Alerte automatique 30 jours avant chaque échéance (CT, révision, assurance).</span></div>
     <div class="card"><div class="tbl-wrap"><table><thead><tr>
-      <th>Véhicule</th><th>Immat.</th><th>Km / heures</th><th>Contrôle technique</th><th>Révision</th><th>Assurance</th><th>Travaux</th></tr></thead>
+      <th>Véhicule</th><th>Immat.</th><th>Km / heures</th><th>Contrôle technique</th><th>Révision</th><th>Assurance</th><th>Opérations</th></tr></thead>
       <tbody>${DB.vehicules.map(v=>`<tr data-id="${v.id}">
         <td><b>${esc(v.nom)}</b><div class="mini">${esc(v.marque)} · ${v.annee}</div></td>
         <td>${esc(v.immat)}</td><td>${(+v.km).toLocaleString('fr-FR')}</td>
         <td>${v.ct?dateBadge(v.ct):'<span class="badge b-muted">Non soumis</span>'}</td>
         <td>${dateBadge(v.revision)}</td><td>${dateBadge(v.assurance)}</td>
-        <td>${v.travaux.length} · ${v.travaux.reduce((s,t)=>s+(+t.cout||0),0)} €</td></tr>`).join('')}</tbody></table></div></div>`;
+        <td>${(v.travaux||[]).length} · ${(v.travaux||[]).reduce((s,t)=>s+(+t.cout||0),0)} €</td></tr>`).join('')}</tbody></table></div></div>`;
   $('#btnVeh').onclick=()=>vehForm(null);
+  $('#btnVehCsv').onclick=()=>exportVehiculesCSV();
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>vehForm(DB.vehicules.find(x=>x.id===tr.dataset.id)));
 };
+/* Export CSV de la flotte avec l'état des échéances. */
+function exportVehiculesCSV(){
+  const etat=d=>{ if(!d)return 'Non soumis'; const n=daysTo(d); return n<0?'Dépassé':n<=30?'À échéance':'OK'; };
+  const cols=['Véhicule','Immatriculation','Marque','Année','Km/heures','Contrôle technique','État CT','Révision','État révision','Assurance','État assurance','Nb opérations','Coût cumulé (€)'];
+  const rows=DB.vehicules.map(v=>[
+    v.nom||'', v.immat||'', v.marque||'', v.annee||'', v.km||'',
+    fmtD(v.ct), etat(v.ct), fmtD(v.revision), etat(v.revision), fmtD(v.assurance), etat(v.assurance),
+    (v.travaux||[]).length, (v.travaux||[]).reduce((s,t)=>s+(+t.cout||0),0)
+  ]);
+  downloadCSV('flotte-vehicules-'+today()+'.csv', cols, rows);
+}
+/* Utilitaire d'export CSV (séparateur ; compatible Excel FR, BOM UTF-8). */
+function downloadCSV(filename, cols, rows){
+  const esc2=s=>{ const t=String(s??''); return /[";\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const lines=[cols.map(esc2).join(';')].concat(rows.map(r=>r.map(esc2).join(';')));
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(lines.join('\r\n'));
+  a.download=filename; a.click();
+  toast('Export généré');
+}
 function vehForm(v){
   const isNew=!v;const g=k=>esc(v?.[k]??'');
   openModal(`
@@ -1176,7 +1199,14 @@ VIEWS.dae=()=>{const cfg={key:'dae',title:'Défibrillateurs (DAE)',
   legend:'<span><span class="sw" style="background:#0E8A8A"></span>OK</span><span><span class="sw" style="background:#B77A12"></span>Péremption ≤ 30 j</span><span><span class="sw" style="background:#C13B2A"></span>Périmé</span>',
   cols:[{h:'Emplacement',r:i=>`<b>${esc(i.lieu)}</b>`},{h:'Modèle',r:i=>esc(i.modele)},{h:'Électrodes',r:i=>dateBadge(i.electrodes)},{h:'Batterie',r:i=>dateBadge(i.batterie)},{h:'Dernière vérification',r:i=>fmtD(i.controle)}],
   fields:[{k:'lieu',l:'Emplacement'},{k:'modele',l:'Modèle'},{k:'electrodes',l:'Péremption électrodes',type:'date'},{k:'batterie',l:'Péremption batterie',type:'date'},{k:'controle',l:'Dernière vérification',type:'date'}],
-  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,lieu:p.props.lieu||'DAE',modele:p.props.modele||'',electrodes:p.props.electrodes||'',batterie:p.props.batterie||'',controle:''})};
+  fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,lieu:p.props.lieu||'DAE',modele:p.props.modele||'',electrodes:p.props.electrodes||'',batterie:p.props.batterie||'',controle:''}),
+  exportCsv:list=>{
+    const etat=d=>{ if(!d)return '—'; const n=daysTo(d); return n<0?'Périmé':n<=30?'À remplacer ≤30j':'OK'; };
+    const globalEtat=x=>{ const m=Math.min(daysTo(x.electrodes),daysTo(x.batterie)); return m<0?'Périmé':m<=30?'À surveiller':'OK'; };
+    const cols=['Emplacement','Modèle','État global','Péremption électrodes','État électrodes','Péremption batterie','État batterie','Dernière vérification'];
+    const rows=list.map(x=>[x.lieu||'',x.modele||'',globalEtat(x),fmtD(x.electrodes),etat(x.electrodes),fmtD(x.batterie),etat(x.batterie),fmtD(x.controle)]);
+    downloadCSV('dae-defibrillateurs-'+today()+'.csv', cols, rows);
+  }};
   cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
 
 /* --- Signalements (côté services) --- */
@@ -1313,9 +1343,6 @@ VIEWS.params=()=>{
         <div class="field"><label>Thème</label>
           <select id="setTheme"><option value="light">Clair</option><option value="dark">Sombre</option></select></div>
         <label class="consent" style="color:var(--ink)"><input type="checkbox" id="setCb"><span>Mode daltonien (palette à contraste sûr pour les statuts)</span></label>
-        <div class="field" style="margin-top:10px"><label>Langue</label>
-          <select id="setLang" disabled><option>Français</option><option>English (à venir)</option></select>
-          <p class="mini" style="margin-top:4px">Le multilingue sera activé dans une prochaine version.</p></div>
       </div></div>
       <div class="card"><div class="hd"><h2>🔒 Mot de passe & sécurité</h2></div><div class="bd">
         ${session.type==='client'?`
