@@ -120,6 +120,11 @@ tbody tr{cursor:pointer}
 /* ---- cartes Leaflet ---- */
 .map-box{height:480px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
 .map-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.exp-wrap{position:relative;display:inline-block}
+.exp-menu{position:absolute;top:calc(100% + 4px);left:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);z-index:50;min-width:150px;overflow:hidden;display:none}
+.exp-menu.open{display:block}
+.exp-menu button{display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;color:var(--ink);font-size:13px;font-weight:500;cursor:pointer}
+.exp-menu button:hover{background:var(--bleu-t)}
 .map-tools .hint{font-size:12.5px;color:var(--muted)}
 .addmode .leaflet-container{cursor:crosshair!important}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12.5px;color:var(--muted)}
@@ -757,13 +762,13 @@ function assetModule(cfg){
       <button class="btn pri" id="btnAdd">＋ Saisir un point sur la carte</button>
       <label class="btn" style="margin:0">⬆ Importer GeoJSON (QGIS)<input type="file" id="fileGJ" accept=".geojson,.json" style="display:none"></label>
       <label class="btn" style="margin:0">⬆ Importer CSV<input type="file" id="fileCSV" accept=".csv,.txt" style="display:none"></label>
+      ${exportMenuHTML('exp')}
       <span class="hint">${cfg.hint||'Import GeoJSON (QGIS) ou CSV. Coordonnées lat/lon (WGS 84) ou X/Y Lambert 93 détectées automatiquement.'}</span>
     </div>
     ${cfg.filterScope?statusFilterBar(cfg.filterScope):''}
     <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="assetMap"></div>
     ${cfg.legend?`<div class="legend">${cfg.legend}</div>`:''}</div></div>
-    <div class="card"><div class="hd"><h2>${cfg.title} — ${list.length} élément(s)</h2><div class="sp"></div>
-      <button class="btn sm" id="btnCsv">Exporter CSV</button></div>
+    <div class="card"><div class="hd"><h2>${cfg.title} — ${list.length} élément(s)</h2></div>
       <div class="tbl-wrap"><table><thead><tr>${cfg.cols.map(c=>`<th>${c.h}</th>`).join('')}</tr></thead>
       <tbody>${list.length?list.map(it=>`<tr data-id="${it.id}">${cfg.cols.map(c=>`<td>${c.r(it)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${cfg.cols.length}"><div class="empty">Aucun élément. Saisissez un point sur la carte ou importez un GeoJSON.</div></td></tr>`}</tbody></table></div></div>`;
   drawMap();
@@ -774,12 +779,8 @@ function assetModule(cfg){
   $('#fileCSV').onchange=e=>{if(e.target.files[0])importCSV(e.target.files[0],pts=>{
     pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s) depuis le CSV');show(cfg.key);});};
   $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>cfg.form(list.find(x=>x.id===tr.dataset.id)));
-  $('#btnCsv').onclick=()=>{
-    if(cfg.exportCsv){ cfg.exportCsv(list); return; }
-    const rows=[cfg.cols.map(c=>c.h).join(';')].concat(list.map(it=>cfg.cols.map(c=>String(c.r(it)).replace(/<[^>]*>/g,'')).join(';')));
-    const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(rows.join('\n'));
-    a.download=cfg.key+'.csv';a.click();
-  };
+  // Export du tableau de synthèse (CSV / PDF) — état enrichi pour DAE via cfg.exportRows
+  bindExportMenu('exp', cfg.key, ()=> cfg.exportRows ? cfg.exportRows(list) : tableData(cfg.title, cfg.cols, list));
 }
 /* Formulaire générique de fiche */
 function assetForm(cfg, it, latlng){
@@ -883,7 +884,7 @@ VIEWS.vehicules=()=>{
   $('#pageTitle').textContent='Flotte véhicules & engins';
   $('#view').innerHTML=`
     <div class="map-tools"><button class="btn pri" id="btnVeh">＋ Ajouter un véhicule</button>
-      <button class="btn" id="btnVehCsv">⬇ Exporter la flotte (CSV)</button>
+      ${exportMenuHTML('expV')}
       <span class="hint">Alerte automatique 30 jours avant chaque échéance (CT, révision, assurance).</span></div>
     <div class="card"><div class="tbl-wrap"><table><thead><tr>
       <th>Véhicule</th><th>Immat.</th><th>Km / heures</th><th>Contrôle technique</th><th>Révision</th><th>Assurance</th><th>Opérations</th></tr></thead>
@@ -894,20 +895,16 @@ VIEWS.vehicules=()=>{
         <td>${dateBadge(v.revision)}</td><td>${dateBadge(v.assurance)}</td>
         <td>${(v.travaux||[]).length} · ${(v.travaux||[]).reduce((s,t)=>s+(+t.cout||0),0)} €</td></tr>`).join('')}</tbody></table></div></div>`;
   $('#btnVeh').onclick=()=>vehForm(null);
-  $('#btnVehCsv').onclick=()=>exportVehiculesCSV();
+  bindExportMenu('expV','flotte-vehicules',()=>{
+    const etat=d=>{ if(!d)return 'Non soumis'; const n=daysTo(d); return n<0?'Dépassé':n<=30?'À échéance':'OK'; };
+    return {
+      titre:'Flotte véhicules & engins — état',
+      cols:['Véhicule','Immatriculation','Marque','Année','Km/heures','Contrôle technique','État CT','Révision','État révision','Assurance','État assurance','Nb opérations','Coût cumulé (€)'],
+      rows:DB.vehicules.map(v=>[v.nom||'',v.immat||'',v.marque||'',v.annee||'',v.km||'',fmtD(v.ct),etat(v.ct),fmtD(v.revision),etat(v.revision),fmtD(v.assurance),etat(v.assurance),(v.travaux||[]).length,(v.travaux||[]).reduce((s,t)=>s+(+t.cout||0),0)])
+    };
+  });
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>vehForm(DB.vehicules.find(x=>x.id===tr.dataset.id)));
 };
-/* Export CSV de la flotte avec l'état des échéances. */
-function exportVehiculesCSV(){
-  const etat=d=>{ if(!d)return 'Non soumis'; const n=daysTo(d); return n<0?'Dépassé':n<=30?'À échéance':'OK'; };
-  const cols=['Véhicule','Immatriculation','Marque','Année','Km/heures','Contrôle technique','État CT','Révision','État révision','Assurance','État assurance','Nb opérations','Coût cumulé (€)'];
-  const rows=DB.vehicules.map(v=>[
-    v.nom||'', v.immat||'', v.marque||'', v.annee||'', v.km||'',
-    fmtD(v.ct), etat(v.ct), fmtD(v.revision), etat(v.revision), fmtD(v.assurance), etat(v.assurance),
-    (v.travaux||[]).length, (v.travaux||[]).reduce((s,t)=>s+(+t.cout||0),0)
-  ]);
-  downloadCSV('flotte-vehicules-'+today()+'.csv', cols, rows);
-}
 /* Utilitaire d'export CSV (séparateur ; compatible Excel FR, BOM UTF-8). */
 function downloadCSV(filename, cols, rows){
   const esc2=s=>{ const t=String(s??''); return /[";\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
@@ -916,6 +913,64 @@ function downloadCSV(filename, cols, rows){
   a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(lines.join('\r\n'));
   a.download=filename; a.click();
   toast('Export généré');
+}
+
+/* Export PDF d'un tableau de synthèse : ouvre la boîte d'impression native (imprimante ou PDF). */
+function exportTablePDF(titre, cols, rows){
+  const commune = session&&session.client ? session.client.commune : 'Commune';
+  const thead = cols.map(c=>`<th>${esc(String(c))}</th>`).join('');
+  const tbody = rows.map(r=>`<tr>${r.map(c=>`<td>${esc(String(c??'—'))}</td>`).join('')}</tr>`).join('')
+    || `<tr><td colspan="${cols.length}">Aucune donnée</td></tr>`;
+  const w=window.open('','_blank','width=1000,height=700');
+  if(!w){toast('Autorisez les fenêtres pop-up pour l\'export PDF');return;}
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${esc(titre)}</title>
+    <style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#182226;margin:22px;line-height:1.4}
+    .band{height:8px;background:repeating-linear-gradient(-45deg,#E8620F 0 12px,#1C3B52 12px 24px);margin-bottom:14px}
+    .logo{font-size:20px;font-weight:bold;color:#1C3B52}.logo em{font-style:normal;color:#E8620F}
+    h1{font-size:18px;margin:10px 0 2px}.meta{color:#5C6B70;font-size:12px;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{text-align:left;color:#fff;background:#1C3B52;font-size:11px;padding:6px 8px}
+    td{padding:5px 8px;border-bottom:1px solid #e6ebe9}
+    tr:nth-child(even) td{background:#f6f8f7}
+    .foot{margin-top:18px;font-size:10.5px;color:#8a9499;border-top:1px solid #DBE2E0;padding-top:6px}
+    @media print{body{margin:10mm}@page{size:landscape}}</style></head><body>
+    <div class="band"></div><div class="logo">City<em>Pilot</em></div>
+    <h1>${esc(titre)}</h1>
+    <div class="meta">${esc(commune)} · ${rows.length} ligne(s) · Édité le ${fmtD(today())}</div>
+    <table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>
+    <div class="foot">Document généré par CityPilot — gestion des services techniques communaux.</div>
+    </body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>w.print(), 300);
+}
+
+/* Menu déroulant « Exporter » (CSV / PDF) réutilisable.
+   getData() renvoie {titre, cols:[...libellés], rows:[[...valeurs]]}. */
+function exportMenuHTML(id){
+  return `<div class="exp-wrap">
+    <button class="btn" id="${id}Btn">⬇ Exporter ▾</button>
+    <div class="exp-menu" id="${id}Menu">
+      <button data-fmt="csv">Format CSV (Excel)</button>
+      <button data-fmt="pdf">Format PDF (imprimable)</button>
+    </div></div>`;
+}
+function bindExportMenu(id, filenameBase, getData){
+  const btn=document.getElementById(id+'Btn'), menu=document.getElementById(id+'Menu');
+  if(!btn) return;
+  btn.onclick=e=>{ e.stopPropagation(); menu.classList.toggle('open'); };
+  document.addEventListener('click',()=>menu.classList.remove('open'),{once:true});
+  menu.querySelectorAll('[data-fmt]').forEach(b=>b.onclick=()=>{
+    const d=getData(); menu.classList.remove('open');
+    if(b.dataset.fmt==='csv') downloadCSV(filenameBase+'-'+today()+'.csv', d.cols, d.rows);
+    else exportTablePDF(d.titre, d.cols, d.rows);
+  });
+}
+/* Extrait les données d'un tableau à partir d'une config de colonnes {h, r}. */
+function tableData(titre, cols, list){
+  return {
+    titre,
+    cols: cols.map(c=>c.h),
+    rows: list.map(it=>cols.map(c=>String(c.r(it)).replace(/<[^>]*>/g,'').trim()))
+  };
 }
 function vehForm(v){
   const isNew=!v;const g=k=>esc(v?.[k]??'');
@@ -1048,12 +1103,18 @@ function printVehicule(v){
 /* --- Travaux & chantiers (carte généraliste + photos) --- */
 const TRAV_COL={'À planifier':'#B77A12','En cours':'#2F5B7C','Terminé':'#2E7D52'};
 VIEWS.travaux=()=>{
-  $('#pageTitle').textContent='Travaux & chantiers';
+  $('#pageTitle').textContent='Travaux & interventions';
   const list=DB.travaux;
   const drawTravMap=()=>buildMap('travMap',filterByStatus(list,'travaux'),t=>workColor(t.statut),t=>travForm(t),latlng=>travForm(null,latlng));
+  const cols=[
+    {h:'Intitulé',r:t=>t.titre},{h:'Catégorie',r:t=>t.categorie},{h:'Priorité',r:t=>t.priorite},
+    {h:'Créé le',r:t=>fmtD(t.cree)},{h:'Statut',r:t=>t.statut},
+    {h:'Ce qu\'il faut faire',r:t=>t.desc||''}
+  ];
   $('#view').innerHTML=`
     <div class="map-tools">
       <button class="btn pri" id="btnAddT">＋ Nouveau travaux (point sur la carte)</button>
+      ${exportMenuHTML('expT')}
       <span class="hint">Carte généraliste tous domaines : décrivez ce qu'il faut faire, ajoutez des photos, suivez l'avancement.</span>
     </div>
     ${statusFilterBar('travaux')}
@@ -1068,6 +1129,7 @@ VIEWS.travaux=()=>{
     :'<tr><td colspan="6"><div class="empty">Aucun travaux. Cliquez sur « Nouveau travaux ».</div></td></tr>'}</tbody></table></div></div>`;
   drawTravMap();
   bindStatusFilter($('#view'),'travaux',drawTravMap);
+  bindExportMenu('expT','travaux-interventions',()=>tableData('Travaux & interventions',cols,list));
   $('#btnAddT').onclick=()=>{addMode=true;$('#travMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le chantier');};
   $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>travForm(list.find(x=>x.id===tr.dataset.id)));
 };
@@ -1200,12 +1262,14 @@ VIEWS.dae=()=>{const cfg={key:'dae',title:'Défibrillateurs (DAE)',
   cols:[{h:'Emplacement',r:i=>`<b>${esc(i.lieu)}</b>`},{h:'Modèle',r:i=>esc(i.modele)},{h:'Électrodes',r:i=>dateBadge(i.electrodes)},{h:'Batterie',r:i=>dateBadge(i.batterie)},{h:'Dernière vérification',r:i=>fmtD(i.controle)}],
   fields:[{k:'lieu',l:'Emplacement'},{k:'modele',l:'Modèle'},{k:'electrodes',l:'Péremption électrodes',type:'date'},{k:'batterie',l:'Péremption batterie',type:'date'},{k:'controle',l:'Dernière vérification',type:'date'}],
   fromGeo:p=>({id:uid(),lat:p.lat,lng:p.lng,lieu:p.props.lieu||'DAE',modele:p.props.modele||'',electrodes:p.props.electrodes||'',batterie:p.props.batterie||'',controle:''}),
-  exportCsv:list=>{
+  exportRows:list=>{
     const etat=d=>{ if(!d)return '—'; const n=daysTo(d); return n<0?'Périmé':n<=30?'À remplacer ≤30j':'OK'; };
     const globalEtat=x=>{ const m=Math.min(daysTo(x.electrodes),daysTo(x.batterie)); return m<0?'Périmé':m<=30?'À surveiller':'OK'; };
-    const cols=['Emplacement','Modèle','État global','Péremption électrodes','État électrodes','Péremption batterie','État batterie','Dernière vérification'];
-    const rows=list.map(x=>[x.lieu||'',x.modele||'',globalEtat(x),fmtD(x.electrodes),etat(x.electrodes),fmtD(x.batterie),etat(x.batterie),fmtD(x.controle)]);
-    downloadCSV('dae-defibrillateurs-'+today()+'.csv', cols, rows);
+    return {
+      titre:'Défibrillateurs (DAE) — état',
+      cols:['Emplacement','Modèle','État global','Péremption électrodes','État électrodes','Péremption batterie','État batterie','Dernière vérification'],
+      rows:list.map(x=>[x.lieu||'',x.modele||'',globalEtat(x),fmtD(x.electrodes),etat(x.electrodes),fmtD(x.batterie),etat(x.batterie),fmtD(x.controle)])
+    };
   }};
   cfg.form=(it,ll)=>assetForm(cfg,it,ll);assetModule(cfg);};
 
