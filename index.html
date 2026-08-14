@@ -125,7 +125,8 @@ tbody tr{cursor:pointer}
 .tbl-wrap{overflow-x:auto}
 
 /* ---- cartes Leaflet ---- */
-.map-box{height:480px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+.map-box{height:480px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);background:#e8ecef}
+.leaflet-container{background:#e8ecef}
 .map-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 .exp-wrap{position:relative;display:inline-block}
 .exp-menu{position:absolute;top:calc(100% + 4px);left:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);z-index:50;min-width:150px;overflow:hidden;display:none}
@@ -725,6 +726,9 @@ function buildMap(elId, items, colorKey, onClickItem, onAddPoint){
   else m.setView(c,15);
   if(onAddPoint)m.on('click',e=>{if(addMode){addMode=false;document.getElementById(elId).parentElement.classList.remove('addmode');onAddPoint(e.latlng);}});
   mapInst=m;
+  // Leaflet doit recalculer sa taille une fois le conteneur dimensionné dans le DOM,
+  // sinon les tuiles ne se chargent pas (carte grise/vide).
+  setTimeout(()=>{ try{ m.invalidateSize(); }catch(e){} }, 120);
   return m;
 }
 function importGeoJSON(file, cb){
