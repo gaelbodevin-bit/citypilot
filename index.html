@@ -1737,7 +1737,7 @@ $('#loginForm').onsubmit=async e=>{
       if(!prof){ await FB.auth.signOut(); toast('Compte sans profil associé — contactez l\'administrateur'); return; }
       if(prof.user.actif===false){ await FB.auth.signOut(); toast('Ce compte est désactivé'); return; }
       if(prof.client && prof.client.abo==='suspendu'){ await FB.auth.signOut(); toast('Abonnement suspendu — contactez le support'); return; }
-      session={type:prof.type, client:prof.client, user:prof.user, role:prof.role, uid:cred.user.uid, email:raw};
+      session={type:prof.type, client:prof.client, user:prof.user, role:prof.role, uid:cred.user.uid, email:raw, fromFirebase:true};
       if(prof.type==='client'){ btn.textContent='Chargement des données…'; await loadCommuneData(); }
       boot(prof.type==='admin'?'admin':'dash'); return;
     }catch(err){
