@@ -469,8 +469,50 @@ function initFirebase(){
 initFirebase();
 
 /* Persistance : en mode démo les données restent en mémoire.
-   En production, remplacer save()/load() par Firestore (voir Paramètres). */
-function save(){ /* firestore.collection(...).set(...) */ }
+   En Firebase, les modules listés dans FS_MODULES sont chargés au login et
+   écrits dans Firestore à chaque modification (sous communes/{communeId}/{type}). */
+function save(){ /* no-op : la persistance se fait par module via fsSet/fsDelete */ }
+
+/* ---- Couche Firestore (chargement au login + écriture à chaque modif) ---- */
+// Modules dont les données sont persistées dans Firestore (les autres restent en mémoire
+// tant qu'on n'a pas validé le patron). On démarre avec les arbres uniquement.
+const FS_MODULES = ['arbres'];
+// Vrai si le module donné doit passer par Firestore pour la session courante.
+function fsActive(type){
+  return FB.mode==='firebase' && session && session.type==='client' && session.fromFirebase
+    && session.client && session.client.id && FS_MODULES.includes(type);
+}
+// Référence à la sous-collection d'un type pour la commune connectée.
+function fsColl(type){
+  return FB.db.collection('communes').doc(session.client.id).collection(type);
+}
+// Charge une sous-collection depuis Firestore dans DB[type]. Renvoie le nombre d'éléments.
+async function fsLoad(type){
+  try{
+    const snap = await fsColl(type).get();
+    DB[type] = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    return DB[type].length;
+  }catch(e){ console.warn('fsLoad '+type, e); return -1; }
+}
+// Écrit (crée ou met à jour) un document. L'id de l'objet devient l'id du document.
+async function fsSet(type, obj){
+  if(!fsActive(type)) return;
+  try{
+    const { id, ...data } = obj;
+    await fsColl(type).doc(String(id)).set(data, { merge:true });
+  }catch(e){ console.warn('fsSet '+type, e); toast('Enregistrement cloud échoué (voir connexion)'); }
+}
+// Supprime un document.
+async function fsDelete(type, id){
+  if(!fsActive(type)) return;
+  try{ await fsColl(type).doc(String(id)).delete(); }
+  catch(e){ console.warn('fsDelete '+type, e); }
+}
+// Charge tous les modules Firestore actifs pour la commune connectée (appelé au login).
+async function loadCommuneData(){
+  if(FB.mode!=='firebase' || !session || session.type!=='client' || !session.fromFirebase || !session.client || !session.client.id) return;
+  for(const type of FS_MODULES){ await fsLoad(type); }
+}
 
 /* ------------------------------ Alertes ------------------------------ */
 function computeAlerts(){
@@ -779,10 +821,14 @@ function assetModule(cfg){
   drawMap();
   if(cfg.filterScope)bindStatusFilter($('#view'),cfg.filterScope,drawMap);
   $('#btnAdd').onclick=()=>{addMode=true;$('#assetMap').parentElement.classList.add('addmode');toast('Cliquez sur la carte pour placer le point');};
-  $('#fileGJ').onchange=e=>{if(e.target.files[0])importGeoJSON(e.target.files[0],pts=>{
-    pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s)');show(cfg.key);});};
-  $('#fileCSV').onchange=e=>{if(e.target.files[0])importCSV(e.target.files[0],pts=>{
-    pts.forEach(p=>list.push(cfg.fromGeo(p)));save();toast(pts.length+' point(s) importé(s) depuis le CSV');show(cfg.key);});};
+  $('#fileGJ').onchange=e=>{if(e.target.files[0])importGeoJSON(e.target.files[0],async pts=>{
+    const objs=pts.map(p=>cfg.fromGeo(p)); objs.forEach(o=>list.push(o));
+    for(const o of objs) await fsSet(cfg.key, o);
+    toast(pts.length+' point(s) importé(s)');show(cfg.key);});};
+  $('#fileCSV').onchange=e=>{if(e.target.files[0])importCSV(e.target.files[0],async pts=>{
+    const objs=pts.map(p=>cfg.fromGeo(p)); objs.forEach(o=>list.push(o));
+    for(const o of objs) await fsSet(cfg.key, o);
+    toast(pts.length+' point(s) importé(s) depuis le CSV');show(cfg.key);});};
   $('#view').querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.onclick=()=>cfg.form(list.find(x=>x.id===tr.dataset.id)));
   // Export du tableau de synthèse (CSV / PDF) — état enrichi pour DAE via cfg.exportRows
   bindExportMenu('exp', cfg.key, ()=> cfg.exportRows ? cfg.exportRows(list) : tableData(cfg.title, cfg.cols, list));
@@ -802,13 +848,18 @@ function assetForm(cfg, it, latlng){
     <div class="ft">${isNew?'':'<button class="btn dngr" id="afDel">Supprimer</button>'}<div style="flex:1"></div>
       <button class="btn" onclick="closeModal()">Annuler</button>
       <button class="btn pri" id="afSave">Enregistrer</button></div>`);
-  $('#afSave').onclick=()=>{
+  $('#afSave').onclick=async()=>{
     const fd=new FormData($('#afForm'));const obj=it||{id:uid(),lat:latlng?.lat,lng:latlng?.lng};
     cfg.fields.forEach(f=>obj[f.k]=fd.get(f.k));
     if(isNew)DB[cfg.key].push(obj);
-    save();closeModal();toast('Enregistré');show(cfg.key);
+    await fsSet(cfg.key, obj);
+    closeModal();toast('Enregistré');show(cfg.key);
   };
-  if(!isNew)$('#afDel').onclick=()=>{DB[cfg.key]=DB[cfg.key].filter(x=>x.id!==it.id);save();closeModal();toast('Supprimé');show(cfg.key);};
+  if(!isNew)$('#afDel').onclick=async()=>{
+    DB[cfg.key]=DB[cfg.key].filter(x=>x.id!==it.id);
+    await fsDelete(cfg.key, it.id);
+    closeModal();toast('Supprimé');show(cfg.key);
+  };
 }
 </script>
 <script>
@@ -1426,8 +1477,13 @@ VIEWS.params=()=>{
     ${isPlatform?`<div class="card" style="margin-top:18px"><div class="hd"><h2>💶 Bilan de facturation</h2></div><div class="bd">${billing}</div></div>`:''}
     <div class="grid2" style="align-items:start;margin-top:18px">
       <div class="card"><div class="hd"><h2>🔥 Firebase (comptes & données)</h2></div><div class="bd">
-        <p style="margin-bottom:10px">Statut : <span class="badge ${FB.mode==='firebase'?'b-ok':'b-warn'}">${FB.mode==='firebase'?'Connecté (Auth active · persistance Firestore en cours d\'intégration)':'Mode démo (données en mémoire)'}</span></p>
-        <p class="mini">Authentication et Firestore sont activés sur le projet. Reste à finaliser : règles de sécurité, persistance des données et création de comptes in-app.</p>
+        <p style="margin-bottom:10px">Statut : <span class="badge ${FB.mode==='firebase'?'b-ok':'b-warn'}">${FB.mode==='firebase'?'Connecté — Auth active':'Mode démo (données en mémoire)'}</span></p>
+        ${FB.mode==='firebase'&&session.type==='client'?`
+          <p class="mini" style="margin-bottom:8px">Persistance Firestore active pour : <b>${FS_MODULES.join(', ')}</b>. Les autres modules restent en mémoire (déploiement progressif).</p>
+          <p class="mini" style="margin-bottom:10px">Module <b>arbres</b> : <b>${DB.arbres.length}</b> élément(s) chargé(s) depuis le cloud.</p>
+          ${session.role==='admin'?`<button class="btn" id="btnSeed">Initialiser des arbres de démo dans le cloud</button>
+          <p class="mini" style="margin-top:6px">À utiliser une fois, sur une commune vide, pour tester la persistance.</p>`:''}
+        `:`<p class="mini">Authentication et Firestore sont activés. La persistance des données est en cours de déploiement, module par module.</p>`}
       </div></div>
       <div class="card"><div class="hd"><h2>💳 Stripe (abonnements)</h2></div><div class="bd">
         <p style="margin-bottom:10px">Statut : <span class="badge ${STRIPE_PAYMENT_LINK?'b-ok':'b-warn'}">${STRIPE_PAYMENT_LINK?'Configuré':'Non configuré'}</span></p>
@@ -1464,6 +1520,18 @@ VIEWS.params=()=>{
     a.download='citypilot-export-'+today()+'.json';a.click();};
   $('#fileImp').onchange=e=>{const f=e.target.files[0];if(!f)return;
     const r=new FileReader();r.onload=()=>{try{Object.assign(DB,JSON.parse(r.result));toast('Données restaurées');show('dash');}catch{toast('Fichier invalide');}};r.readAsText(f);};
+  if($('#btnSeed'))$('#btnSeed').onclick=async()=>{
+    if(DB.arbres.length){ if(!confirm('La commune contient déjà '+DB.arbres.length+' arbre(s). Ajouter quand même 3 arbres de démo ?'))return; }
+    const c=session.client.centre||CENTER;
+    const demo=[
+      {id:uid(),lat:c[0]+0.001,lng:c[1]+0.001,essence:'Platane commun',etat:'Bon',plantation:'1975',lieu:'Place de la Mairie',note:''},
+      {id:uid(),lat:c[0]-0.0012,lng:c[1]+0.0015,essence:'Tilleul',etat:'À surveiller',plantation:'1990',lieu:'Rue de l\'Église',note:'Élagage à prévoir'},
+      {id:uid(),lat:c[0]+0.0008,lng:c[1]-0.0011,essence:'Érable',etat:'Bon',plantation:'2008',lieu:'Parc municipal',note:''}
+    ];
+    $('#btnSeed').disabled=true;$('#btnSeed').textContent='Écriture dans le cloud…';
+    for(const a of demo){ DB.arbres.push(a); await fsSet('arbres', a); }
+    toast('3 arbres de démo créés dans Firestore');show('params');
+  };
 };
 
 /* Bilan de facturation (admin plateforme) : synthèse des abonnements. */
@@ -1661,6 +1729,7 @@ $('#loginForm').onsubmit=async e=>{
       if(prof.user.actif===false){ await FB.auth.signOut(); toast('Ce compte est désactivé'); return; }
       if(prof.client && prof.client.abo==='suspendu'){ await FB.auth.signOut(); toast('Abonnement suspendu — contactez le support'); return; }
       session={type:prof.type, client:prof.client, user:prof.user, role:prof.role, uid:cred.user.uid, email:raw};
+      if(prof.type==='client'){ btn.textContent='Chargement des données…'; await loadCommuneData(); }
       boot(prof.type==='admin'?'admin':'dash'); return;
     }catch(err){
       const map={'auth/invalid-credential':'E-mail ou mot de passe incorrect','auth/user-not-found':'Aucun compte pour cet e-mail','auth/wrong-password':'Mot de passe incorrect','auth/too-many-requests':'Trop de tentatives, réessayez plus tard','auth/invalid-email':'E-mail invalide'};
