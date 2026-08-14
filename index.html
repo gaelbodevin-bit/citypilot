@@ -300,11 +300,11 @@ tbody tr{cursor:pointer}
 <script>
 /* =====================================================================
    CityPilot — prototype fonctionnel (mode démo, données en mémoire)
-   Branchements prévus : Firebase (Auth + Firestore) et Stripe.
+   Branchements : Firebase (Auth + Firestore).
    Voir la page "Paramètres & intégrations" et le README.
    ===================================================================== */
 
-/* ---------- Configuration Firebase / Stripe (à remplir en prod) ---------- */
+/* ---------- Configuration Firebase ---------- */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAN2a0LmXC8UAyTFs79f4PlO1uk0k8POrs",
   authDomain: "citypilot-f6cc2.firebaseapp.com",
@@ -314,7 +314,6 @@ const FIREBASE_CONFIG = {
   appId: "1:204892295551:web:559471b53392e7f951ca4a",
   measurementId: "G-SX8GGHYMY4"
 };
-const STRIPE_PAYMENT_LINK = null; /* lien de paiement Stripe (abonnement) */
 
 const CENTER = [47.302, 0.752]; // commune de démonstration
 const today = () => new Date().toISOString().slice(0,10);
@@ -703,7 +702,11 @@ function filterByStatus(list, scope){
 }
 
 function mapCenter(){
-  if(session && session.client && Array.isArray(session.client.centre)) return session.client.centre;
+  const c = session && session.client;
+  if(c){
+    if(Array.isArray(c.centre)) return c.centre;                       // démo : [lat, lng]
+    if(typeof c.lat==='number' && typeof c.lng==='number') return [c.lat, c.lng]; // Firestore : lat/lng
+  }
   return CENTER;
 }
 function buildMap(elId, items, colorKey, onClickItem, onAddPoint){
@@ -819,7 +822,7 @@ function assetModule(cfg){
       <label class="btn" style="margin:0">⬆ Importer GeoJSON (QGIS)<input type="file" id="fileGJ" accept=".geojson,.json" style="display:none"></label>
       <label class="btn" style="margin:0">⬆ Importer CSV<input type="file" id="fileCSV" accept=".csv,.txt" style="display:none"></label>
       ${exportMenuHTML('exp')}
-      <span class="hint">${cfg.hint||'Import GeoJSON (QGIS) ou CSV. Coordonnées lat/lon (WGS 84) ou X/Y Lambert 93 détectées automatiquement.'}</span>
+      <span class="hint">${cfg.hint||'Import GeoJSON (export QGIS) ou CSV. Pour un shapefile (.shp), exportez-le d\'abord en GeoJSON ou CSV depuis QGIS. Coordonnées lat/lon (WGS 84) ou X/Y Lambert 93 détectées automatiquement.'}</span>
     </div>
     ${cfg.filterScope?statusFilterBar(cfg.filterScope):''}
     <div class="card" style="margin-bottom:18px"><div class="bd" style="padding:10px"><div class="map-box" id="assetMap"></div>
@@ -1380,7 +1383,7 @@ VIEWS.admin=()=>{
       <div class="kpi"><div class="n">${DB.clients.filter(c=>c.abo==='essai').length}</div><div class="l">En période d’essai</div></div>
     </div>
     <div class="map-tools"><button class="btn pri" id="btnCli">＋ Nouvelle commune cliente</button>
-      <span class="hint">En production : la création du compte déclenche l’envoi d’un lien de paiement Stripe et la création de l’utilisateur Firebase.</span></div>
+      <span class="hint">En production : la création du compte déclenche l'envoi d'une invitation par e-mail et la création de l'utilisateur Firebase.</span></div>
     <div class="card"><div class="tbl-wrap"><table><thead><tr>
       <th>Code client</th><th>Commune</th><th>Contact</th><th>Formule</th><th>Utilisateurs</th><th>Abonnement</th><th>Échéance</th></tr></thead>
       <tbody>${DB.clients.map(c=>`<tr data-id="${c.id}">
@@ -1402,7 +1405,7 @@ function cliForm(c){
       <div class="field"><label>Statut abonnement</label><select name="abo">${['essai','actif','suspendu'].map(o=>`<option ${g('abo')===o?'selected':''}>${o}</option>`).join('')}</select></div>
       <div class="field"><label>Échéance</label><input name="echeance" type="date" value="${g('echeance')}"></div>
     </div></form>
-    <p class="mini">💳 Stripe : le statut passera automatiquement à « actif » à réception du webhook <code>invoice.paid</code>, et « suspendu » après échec de paiement.</p>
+    <p class="mini">Le statut d'abonnement (essai / actif / suspendu) est géré manuellement ici, selon le paiement reçu (mandat administratif, virement…).</p>
     ${isNew?'<p class="mini">Un premier utilisateur « Admin communal » sera créé avec le code client et le mot de passe ci-dessus. Vous pourrez ensuite ajouter des agents.</p>':`<div id="cliUsers" style="margin-top:16px"></div>`}
     </div>
     <div class="ft">${isNew?'':'<button class="btn dngr" id="clDel">Supprimer</button>'}<div style="flex:1"></div>
@@ -1494,9 +1497,8 @@ VIEWS.params=()=>{
           <p class="mini" style="margin-top:6px">À utiliser une fois, sur une commune vide, pour tester la persistance.</p>`:''}
         `:`<p class="mini">Authentication et Firestore sont activés. La persistance des données est en cours de déploiement, module par module.</p>`}
       </div></div>
-      <div class="card"><div class="hd"><h2>💳 Stripe (abonnements)</h2></div><div class="bd">
-        <p style="margin-bottom:10px">Statut : <span class="badge ${STRIPE_PAYMENT_LINK?'b-ok':'b-warn'}">${STRIPE_PAYMENT_LINK?'Configuré':'Non configuré'}</span></p>
-        <p class="mini">Pour les communes (paiement souvent sur mandat administratif), le statut d'abonnement peut être géré manuellement ; Stripe reste optionnel pour la CB/le prélèvement.</p>
+      <div class="card"><div class="hd"><h2>💶 Facturation</h2></div><div class="bd">
+        <p class="mini">Les communes règlent généralement par <b>mandat administratif</b> (facture / virement du Trésor public), pas par carte. Le statut d'abonnement de chaque commune est géré manuellement dans le panel « Clients & abonnements ».</p>
       </div></div>
     </div>
     <div class="card" style="margin-top:18px"><div class="hd"><h2>Sauvegarde locale</h2></div><div class="bd">
@@ -1592,7 +1594,7 @@ VIEWS.rgpd=()=>{
     ${isCommunalAdmin?`<div class="card" style="margin-top:18px"><div class="hd"><h2>Suppression du compte (droit à l'effacement)</h2></div><div class="bd">
       <div class="danger-box">
         <p style="margin-bottom:10px"><b>Demander la suppression du compte et des données de la commune.</b> Cette action relève du droit à l'effacement (art. 17 RGPD).</p>
-        <p class="mini" style="margin-bottom:12px">En production, la demande déclenchera : résiliation de l'abonnement Stripe, suppression du compte Firebase Auth, et effacement (ou anonymisation) des données Firestore associées, dans le respect des durées légales de conservation.</p>
+        <p class="mini" style="margin-bottom:12px">En production, la demande déclenchera : suppression du compte Firebase Auth et effacement (ou anonymisation) des données Firestore associées, dans le respect des durées légales de conservation.</p>
         <button class="btn dngr" id="rgDelete">Demander la suppression de mon compte</button>
       </div>
     </div></div>`:''}`;
