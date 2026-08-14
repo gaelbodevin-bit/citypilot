@@ -27,6 +27,8 @@ html[data-theme="dark"] #modalBg{
   --shadow:0 1px 3px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35);
 }
 html[data-theme="dark"] #app{ background:var(--paper); }
+/* Le texte de l'app et des modales suit --ink (sinon il hérite du body clair). */
+#app, #modalBg{ color:var(--ink); }
 /* Mode daltonien : palette sûre (bleu/orange distinguables, évite le rouge/vert ambigu) */
 html[data-cb="on"]{
   --ok:#0072B2; --ok-t:#D9EAF5; --warn:#E69F00; --warn-t:#FBF0DA; --danger:#D55E00; --danger-t:#FBE4D6;
@@ -511,6 +513,9 @@ async function fsDelete(type, id){
 // Charge tous les modules Firestore actifs pour la commune connectée (appelé au login).
 async function loadCommuneData(){
   if(FB.mode!=='firebase' || !session || session.type!=='client' || !session.fromFirebase || !session.client || !session.client.id) return;
+  // On repart des données cloud uniquement : vider les collections gérées par Firestore
+  // pour ne jamais mélanger le jeu de démo (chargé en mémoire au démarrage) avec le cloud.
+  for(const type of FS_MODULES){ DB[type] = []; }
   for(const type of FS_MODULES){ await fsLoad(type); }
 }
 
