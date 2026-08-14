@@ -16,18 +16,23 @@
   --warn:#B77A12; --warn-t:#F8EFDB; --danger:#C13B2A; --danger-t:#F9E6E2;
   --r:10px; --shadow:0 1px 3px rgba(24,34,38,.08),0 6px 18px rgba(24,34,38,.06);
 }
-html[data-theme="dark"]{
+/* Thème sombre : appliqué uniquement dans l'application (#app) et les fenêtres modales
+   ouvertes depuis l'app. L'écran de connexion et les pages publiques restent en clair. */
+html[data-theme="dark"] #app,
+html[data-theme="dark"] #modalBg{
   --paper:#141A1E; --panel:#1E262B; --ink:#E7ECEE; --muted:#9BAAB1;
   --line:#33414A; --bleu:#5A94C0; --bleu-d:#0E1417; --bleu-t:#22323D;
   --signal:#F0842E; --signal-t:#3A2A1C; --ok:#4FB07A; --ok-t:#1E3328;
   --warn:#D7A23E; --warn-t:#39301B; --danger:#E06552; --danger-t:#3A211C;
   --shadow:0 1px 3px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35);
 }
+html[data-theme="dark"] #app{ background:var(--paper); }
 /* Mode daltonien : palette sûre (bleu/orange distinguables, évite le rouge/vert ambigu) */
 html[data-cb="on"]{
   --ok:#0072B2; --ok-t:#D9EAF5; --warn:#E69F00; --warn-t:#FBF0DA; --danger:#D55E00; --danger-t:#FBE4D6;
 }
-html[data-cb="on"][data-theme="dark"]{
+html[data-cb="on"][data-theme="dark"] #app,
+html[data-cb="on"][data-theme="dark"] #modalBg{
   --ok:#56A9E0; --ok-t:#16303F; --warn:#E6A93A; --warn-t:#3A2F17; --danger:#E8794A; --danger-t:#3A241A;
 }
 *{box-sizing:border-box;margin:0;padding:0}
