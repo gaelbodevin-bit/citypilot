@@ -402,6 +402,17 @@ const DB = {
      ct:addDays(today(),-8), revision:addDays(today(),90), assurance:addDays(today(),300),
      travaux:[{d:addDays(today(),-30),type:'Réparation',t:'Batterie',cout:130,km:131000},{d:addDays(today(),-200),type:'Révision',t:'Distribution',cout:640,km:124000}]},
   ],
+  chenil: [
+    {id:uid(), type:'Chien', nom:'Rex', race:'Berger allemand', robe:'Noir et feu', sexe:'Mâle', puce:'250269604512345',
+     dateEntree:addDays(today(),-4), lieuCapture:'Rue des Écoles', amenePar:'Police municipale', circonstances:'Divagation sur la voie publique',
+     proprioNom:'', proprioTel:'', proprioAdresse:'', dateSortie:null, motifSortie:'', sortiePar:'', veto:'Vacciné, à jour', photo:null},
+    {id:uid(), type:'Chat', nom:'', race:'Européen', robe:'Tigré gris', sexe:'Femelle', puce:'',
+     dateEntree:addDays(today(),-12), lieuCapture:'Parking de la mairie', amenePar:'Agent technique', circonstances:'Chat trouvé blessé',
+     proprioNom:'Mme Dubois', proprioTel:'06 22 33 44 55', proprioAdresse:'12 rue du Cher, Saint-Aignan', dateSortie:addDays(today(),-9), motifSortie:'Restitué au propriétaire', sortiePar:'M. Martin (agent)', veto:'Soins plaie patte', photo:null},
+    {id:uid(), type:'Chien', nom:'Bella', race:'Croisé labrador', robe:'Sable', sexe:'Femelle', puce:'250268501298765',
+     dateEntree:addDays(today(),-2), lieuCapture:'Route de Blois', amenePar:'Particulier', circonstances:'Chien errant récupéré par un riverain',
+     proprioNom:'', proprioTel:'', proprioAdresse:'', dateSortie:null, motifSortie:'', sortiePar:'', veto:'', photo:null},
+  ],
   signalements: [
     {id:uid(), lat:47.3021, lng:0.7534, cat:'Éclairage public', desc:'Lampadaire clignotant rue Nationale, face à la boulangerie',
      nom:'M. Perrin', contact:'06 12 34 56 78', date:addDays(today(),-2), statut:'Nouveau'},
@@ -606,6 +617,7 @@ const ICONS = {
   bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v10h14V10"/></svg>',
   heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 8-6-16-3 8H2"/></svg>',
+  paw:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="10.5" r="2"/><circle cx="9.5" cy="6.5" r="2"/><circle cx="14.5" cy="6.5" r="2"/><circle cx="18.5" cy="10.5" r="2"/><path d="M12 11c-2.5 0-4.5 2-5 4-.4 1.6.8 3 2.4 3 .9 0 1.7-.4 2.6-.4s1.7.4 2.6.4c1.6 0 2.8-1.4 2.4-3-.5-2-2.5-4-5-4z"/></svg>',
   mega:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2l14 5V6L3 11z"/><path d="M17 8a4 4 0 0 1 0 8"/></svg>',
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>',
   users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>',
@@ -629,6 +641,7 @@ const NAV = [
   {sec:'Moyens'},
   {id:'vehicules', label:'Flotte véhicules', ico:'truck', cnt:()=>DB.vehicules.filter(v=>(v.ct&&daysTo(v.ct)<=30)||(v.revision&&daysTo(v.revision)<=30)).length},
   {id:'batiments', label:'Bâtiments', ico:'home'},
+  {id:'chenil', label:'Chenil communal', ico:'paw', cnt:()=>DB.chenil.filter(a=>!a.dateSortie).length},
   {sec:'Compte'},
   {id:'users', label:'Utilisateurs', ico:'users', role:'admin'},
   {id:'rgpd', label:'Confidentialité & RGPD', ico:'shield'},
@@ -973,6 +986,140 @@ VIEWS.vehicules=()=>{
   });
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>vehForm(DB.vehicules.find(x=>x.id===tr.dataset.id)));
 };
+
+/* --- Chenil communal (animaux capturés / accueillis) --- */
+VIEWS.chenil=()=>{
+  $('#pageTitle').textContent='Chenil communal';
+  const list=DB.chenil;
+  const presents=list.filter(a=>!a.dateSortie).length;
+  $('#view').innerHTML=`
+    <div class="map-tools"><button class="btn pri" id="btnAnimal">＋ Enregistrer un animal</button>
+      ${exportMenuHTML('expC')}
+      <span class="hint">${presents} animal(aux) actuellement présent(s) · ${list.length} au total (historique inclus).</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr>
+      <th>Animal</th><th>Puce</th><th>Entrée</th><th>Lieu de capture</th><th>Propriétaire</th><th>Statut</th></tr></thead>
+      <tbody>${list.length?list.map(a=>`<tr data-id="${a.id}">
+        <td><b>${esc(a.nom||'(sans nom)')}</b><div class="mini">${esc(a.type)}${a.race?' · '+esc(a.race):''}${a.sexe?' · '+esc(a.sexe):''}</div></td>
+        <td>${a.puce?esc(a.puce):'<span class="mini">—</span>'}</td>
+        <td>${fmtD(a.dateEntree)}</td>
+        <td>${esc(a.lieuCapture||'—')}</td>
+        <td>${a.proprioNom?esc(a.proprioNom):'<span class="mini">Inconnu</span>'}</td>
+        <td>${a.dateSortie?`<span class="badge b-muted">Sorti le ${fmtD(a.dateSortie)}</span>`:'<span class="badge b-ok">Présent</span>'}</td></tr>`).join('')
+      :'<tr><td colspan="6"><div class="empty">Aucun animal enregistré.</div></td></tr>'}</tbody></table></div></div>`;
+  $('#btnAnimal').onclick=()=>chenForm(null);
+  bindExportMenu('expC','chenil',()=>({
+    titre:'Chenil communal — registre des animaux',
+    cols:['Nom','Type','Race','Robe','Sexe','N° puce','Date entrée','Lieu capture','Amené par','Circonstances','Propriétaire','Tél. propriétaire','Adresse propriétaire','Date sortie','Motif sortie','Sortie gérée par','Suivi vétérinaire','Statut'],
+    rows:list.map(a=>[a.nom||'',a.type||'',a.race||'',a.robe||'',a.sexe||'',a.puce||'',fmtD(a.dateEntree),a.lieuCapture||'',a.amenePar||'',a.circonstances||'',a.proprioNom||'',a.proprioTel||'',a.proprioAdresse||'',a.dateSortie?fmtD(a.dateSortie):'',a.motifSortie||'',a.sortiePar||'',a.veto||'',a.dateSortie?'Sorti':'Présent'])
+  }));
+  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>chenForm(list.find(x=>x.id===tr.dataset.id)));
+};
+
+function chenForm(a){
+  const isNew=!a;const g=k=>esc(a?.[k]??'');
+  const opt=(v,list)=>list.map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('');
+  openModal(`
+    <div class="hd"><h2>${isNew?'Nouvel animal':esc(a.nom||a.type||'Animal')}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="bd"><form id="chForm">
+      <label style="font-weight:700;color:var(--ink);display:block;margin:2px 0 8px">🐾 Identification</label>
+      <div class="grid2">
+        <div class="field"><label>Type</label><select name="type">${opt(g('type')||'Chien',['Chien','Chat','Autre'])}</select></div>
+        <div class="field"><label>Nom / surnom</label><input name="nom" value="${g('nom')}" placeholder="si connu"></div>
+        <div class="field"><label>Race</label><input name="race" value="${g('race')}"></div>
+        <div class="field"><label>Robe / couleur</label><input name="robe" value="${g('robe')}"></div>
+        <div class="field"><label>Sexe</label><select name="sexe">${opt(g('sexe'),['','Mâle','Femelle'])}</select></div>
+        <div class="field"><label>N° de puce / identification</label><input name="puce" value="${g('puce')}" placeholder="15 chiffres"></div>
+      </div>
+      <label>Photo</label>
+      <div class="dropzone" id="chDrop">📷 Glissez une photo ici, ou cliquez pour parcourir
+        <input type="file" id="chFile" accept="image/*" style="display:none"></div>
+      <div class="thumbs" id="chThumb"></div>
+
+      <label style="font-weight:700;color:var(--ink);display:block;margin:16px 0 8px">📥 Entrée</label>
+      <div class="grid2">
+        <div class="field"><label>Date d'entrée</label><input name="dateEntree" type="date" value="${g('dateEntree')||today()}"></div>
+        <div class="field"><label>Lieu de capture</label><input name="lieuCapture" value="${g('lieuCapture')}"></div>
+        <div class="field"><label>Amené par</label><input name="amenePar" value="${g('amenePar')}" placeholder="agent, police municipale, particulier…"></div>
+        <div class="field"><label>Circonstances</label><input name="circonstances" value="${g('circonstances')}"></div>
+      </div>
+
+      <label style="font-weight:700;color:var(--ink);display:block;margin:16px 0 8px">👤 Propriétaire (si identifié)</label>
+      <div class="grid2">
+        <div class="field"><label>Nom</label><input name="proprioNom" value="${g('proprioNom')}"></div>
+        <div class="field"><label>Téléphone</label><input name="proprioTel" value="${g('proprioTel')}"></div>
+        <div class="field" style="grid-column:1/-1"><label>Adresse</label><input name="proprioAdresse" value="${g('proprioAdresse')}"></div>
+      </div>
+
+      <label style="font-weight:700;color:var(--ink);display:block;margin:16px 0 8px">📤 Sortie</label>
+      <div class="grid2">
+        <div class="field"><label>Date de sortie</label><input name="dateSortie" type="date" value="${g('dateSortie')}"></div>
+        <div class="field"><label>Motif de sortie</label><select name="motifSortie">${opt(g('motifSortie'),['','Restitué au propriétaire','Adopté','Transféré en refuge / SPA','Décédé','Euthanasié','Autre'])}</select></div>
+        <div class="field"><label>Sortie gérée par</label><input name="sortiePar" value="${g('sortiePar')}" placeholder="nom de l'agent / responsable"></div>
+        <div class="field"><label>Suivi vétérinaire</label><input name="veto" value="${g('veto')}" placeholder="vaccins, soins…"></div>
+      </div>
+      <p class="mini" style="margin-top:8px">🔒 La photo est conservée en mémoire pour l'instant (comme les autres modules) ; elle sera stockée durablement avec Firebase Storage.</p>
+    </form></div>
+    <div class="ft">${isNew?'':'<button class="btn dngr" id="chDel">Supprimer</button>'}<div style="flex:1"></div>
+      ${isNew?'':'<button class="btn" id="chPrint">🖨 Imprimer la fiche</button>'}
+      <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="chSave">Enregistrer</button></div>`);
+  // photo
+  if(a && a.photo===undefined) a.photo=null;
+  let photoBuf = a ? a.photo : null;
+  const renderThumb=()=>{$('#chThumb').innerHTML = photoBuf ? `<div class="thumb"><img src="${photoBuf}" alt="photo"><button class="del" title="Retirer">✕</button></div>` : '';
+    const del=$('#chThumb').querySelector('.del'); if(del)del.onclick=()=>{photoBuf=null;renderThumb();};};
+  renderThumb();
+  const dz=$('#chDrop');
+  dz.onclick=()=>$('#chFile').click();
+  const loadPhoto=f=>{ if(!f||!f.type.startsWith('image/'))return; const r=new FileReader(); r.onload=()=>{photoBuf=r.result;renderThumb();}; r.readAsDataURL(f); };
+  $('#chFile').onchange=e=>loadPhoto(e.target.files[0]);
+  ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
+  dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)loadPhoto(e.dataTransfer.files[0]);});
+  $('#chSave').onclick=()=>{
+    const fd=new FormData($('#chForm'));const obj=a||{id:uid()};
+    ['type','nom','race','robe','sexe','puce','dateEntree','lieuCapture','amenePar','circonstances','proprioNom','proprioTel','proprioAdresse','dateSortie','motifSortie','sortiePar','veto'].forEach(k=>obj[k]=fd.get(k)||'');
+    obj.dateSortie=fd.get('dateSortie')||null;
+    obj.photo=photoBuf;
+    if(isNew)DB.chenil.push(obj);
+    save();closeModal();toast('Fiche animal enregistrée');show('chenil');
+  };
+  if(!isNew)$('#chDel').onclick=()=>{ if(!confirm('Supprimer définitivement cette fiche animal ?'))return; DB.chenil=DB.chenil.filter(x=>x.id!==a.id);save();closeModal();show('chenil'); };
+  if(!isNew)$('#chPrint').onclick=()=>printAnimal(a);
+}
+
+/* Impression d'une fiche animal (boîte native imprimante/PDF). */
+function printAnimal(a){
+  const commune = session&&session.client ? session.client.commune : 'Commune';
+  const ligne=(l,v)=>`<tr><td class="k">${l}</td><td>${esc(v||'—')}</td></tr>`;
+  const w=window.open('','_blank','width=900,height=800');
+  if(!w){toast('Autorisez les fenêtres pop-up pour imprimer');return;}
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Fiche animal — ${esc(a.nom||a.type)}</title>
+    <style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#182226;margin:26px;line-height:1.5}
+    .band{height:8px;background:repeating-linear-gradient(-45deg,#E8620F 0 12px,#1C3B52 12px 24px);margin-bottom:16px}
+    .logo{font-size:22px;font-weight:bold;color:#1C3B52}.logo em{font-style:normal;color:#E8620F}
+    h1{font-size:20px;margin:12px 0 2px}.meta{color:#5C6B70;font-size:13px;margin-bottom:14px}
+    h2{font-size:13px;text-transform:uppercase;color:#5C6B70;border-bottom:1px solid #DBE2E0;padding-bottom:4px;margin:16px 0 6px}
+    table{width:100%;border-collapse:collapse;font-size:13px}td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}
+    td.k{width:210px;color:#5C6B70;white-space:nowrap}
+    .photo{float:right;width:180px;height:180px;object-fit:cover;border:1px solid #DBE2E0;border-radius:8px;margin:0 0 10px 14px}
+    .foot{margin-top:22px;font-size:11px;color:#8a9499;border-top:1px solid #DBE2E0;padding-top:8px}
+    @media print{body{margin:12mm}}</style></head><body>
+    <div class="band"></div><div class="logo">City<em>Pilot</em></div>
+    <h1>Fiche animal — ${esc(a.nom||'(sans nom)')}</h1>
+    <div class="meta">Chenil communal · ${esc(commune)} · Édité le ${fmtD(today())}</div>
+    ${a.photo?`<img class="photo" src="${a.photo}" alt="photo">`:''}
+    <h2>Identification</h2><table>
+    ${ligne('Type',a.type)}${ligne('Nom / surnom',a.nom)}${ligne('Race',a.race)}${ligne('Robe / couleur',a.robe)}${ligne('Sexe',a.sexe)}${ligne('N° de puce',a.puce)}</table>
+    <h2>Entrée</h2><table>
+    ${ligne('Date d\'entrée',fmtD(a.dateEntree))}${ligne('Lieu de capture',a.lieuCapture)}${ligne('Amené par',a.amenePar)}${ligne('Circonstances',a.circonstances)}</table>
+    <h2>Propriétaire</h2><table>
+    ${ligne('Nom',a.proprioNom)}${ligne('Téléphone',a.proprioTel)}${ligne('Adresse',a.proprioAdresse)}</table>
+    <h2>Sortie</h2><table>
+    ${ligne('Date de sortie',a.dateSortie?fmtD(a.dateSortie):'Toujours présent')}${ligne('Motif',a.motifSortie)}${ligne('Sortie gérée par',a.sortiePar)}${ligne('Suivi vétérinaire',a.veto)}</table>
+    <div class="foot">Document généré par CityPilot — chenil communal.</div>
+    </body></html>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),300);
+}
 /* Utilitaire d'export CSV (séparateur ; compatible Excel FR, BOM UTF-8). */
 function downloadCSV(filename, cols, rows){
   const esc2=s=>{ const t=String(s??''); return /[";\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
