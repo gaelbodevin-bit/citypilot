@@ -128,6 +128,12 @@ tbody tr{cursor:pointer}
 .map-box{height:480px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);background:#e8ecef}
 .leaflet-container{background:#e8ecef}
 .map-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.fchip{display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:20px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-weight:600;font-size:13px;cursor:pointer}
+.fchip:hover{border-color:var(--bleu)}
+.fchip.on{background:var(--bleu);color:#fff;border-color:var(--bleu)}
+.fchip .fc-n{font-size:11px;background:rgba(0,0,0,.12);padding:1px 7px;border-radius:10px}
+.fchip.on .fc-n{background:rgba(255,255,255,.25)}
 .exp-wrap{position:relative;display:inline-block}
 .exp-menu{position:absolute;top:calc(100% + 4px);left:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);z-index:50;min-width:150px;overflow:hidden;display:none}
 .exp-menu.open{display:block}
@@ -235,6 +241,7 @@ tbody tr{cursor:pointer}
     <div class="commune" id="sbCommune"></div>
     <nav class="nav" id="mainNav"></nav>
     <div class="foot">
+      <a class="link" id="btnSignalProb" style="color:#F0B27A;display:inline-flex;align-items:center;gap:5px">⚠ Signaler un problème</a><br>
       <span id="sbUser"></span><br>
       <a class="link" style="color:#9FC0D6" id="btnLogout">Se déconnecter</a>
     </div>
@@ -988,31 +995,48 @@ VIEWS.vehicules=()=>{
 };
 
 /* --- Chenil communal (animaux capturés / accueillis) --- */
+let chenilFilter = 'presents'; // presents | sortis | tous
 VIEWS.chenil=()=>{
   $('#pageTitle').textContent='Chenil communal';
   const list=DB.chenil;
   const presents=list.filter(a=>!a.dateSortie).length;
-  $('#view').innerHTML=`
-    <div class="map-tools"><button class="btn pri" id="btnAnimal">＋ Enregistrer un animal</button>
-      ${exportMenuHTML('expC')}
-      <span class="hint">${presents} animal(aux) actuellement présent(s) · ${list.length} au total (historique inclus).</span></div>
-    <div class="card"><div class="tbl-wrap"><table><thead><tr>
-      <th>Animal</th><th>Puce</th><th>Entrée</th><th>Lieu de capture</th><th>Propriétaire</th><th>Statut</th></tr></thead>
-      <tbody>${list.length?list.map(a=>`<tr data-id="${a.id}">
+  const sortis=list.length-presents;
+  const filtered=()=>chenilFilter==='presents'?list.filter(a=>!a.dateSortie)
+    :chenilFilter==='sortis'?list.filter(a=>a.dateSortie):list;
+  const rowsHTML=()=>{const l=filtered();return l.length?l.map(a=>`<tr data-id="${a.id}">
         <td><b>${esc(a.nom||'(sans nom)')}</b><div class="mini">${esc(a.type)}${a.race?' · '+esc(a.race):''}${a.sexe?' · '+esc(a.sexe):''}</div></td>
         <td>${a.puce?esc(a.puce):'<span class="mini">—</span>'}</td>
         <td>${fmtD(a.dateEntree)}</td>
         <td>${esc(a.lieuCapture||'—')}</td>
         <td>${a.proprioNom?esc(a.proprioNom):'<span class="mini">Inconnu</span>'}</td>
         <td>${a.dateSortie?`<span class="badge b-muted">Sorti le ${fmtD(a.dateSortie)}</span>`:'<span class="badge b-ok">Présent</span>'}</td></tr>`).join('')
-      :'<tr><td colspan="6"><div class="empty">Aucun animal enregistré.</div></td></tr>'}</tbody></table></div></div>`;
+      :'<tr><td colspan="6"><div class="empty">Aucun animal pour ce filtre.</div></td></tr>';};
+  const chip=(k,lbl,n)=>`<button class="fchip ${chenilFilter===k?'on':''}" data-f="${k}">${lbl} <span class="fc-n">${n}</span></button>`;
+  $('#view').innerHTML=`
+    <div class="map-tools"><button class="btn pri" id="btnAnimal">＋ Enregistrer un animal</button>
+      ${exportMenuHTML('expC')}
+      <span class="hint">${presents} présent(s) · ${list.length} au total (historique inclus).</span></div>
+    <div class="filters" id="chenFilters">
+      ${chip('presents','Présents',presents)}
+      ${chip('sortis','Sortis',sortis)}
+      ${chip('tous','Tous',list.length)}
+    </div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr>
+      <th>Animal</th><th>Puce</th><th>Entrée</th><th>Lieu de capture</th><th>Propriétaire</th><th>Statut</th></tr></thead>
+      <tbody id="chenBody">${rowsHTML()}</tbody></table></div></div>`;
+  const bindRows=()=>$('#chenBody').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>chenForm(list.find(x=>x.id===tr.dataset.id)));
   $('#btnAnimal').onclick=()=>chenForm(null);
+  $('#chenFilters').querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{
+    chenilFilter=b.dataset.f;
+    $('#chenFilters').querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('on',x.dataset.f===chenilFilter));
+    $('#chenBody').innerHTML=rowsHTML(); bindRows();
+  });
   bindExportMenu('expC','chenil',()=>({
     titre:'Chenil communal — registre des animaux',
     cols:['Nom','Type','Race','Robe','Sexe','N° puce','Date entrée','Lieu capture','Amené par','Circonstances','Propriétaire','Tél. propriétaire','Adresse propriétaire','Date sortie','Motif sortie','Sortie gérée par','Suivi vétérinaire','Statut'],
-    rows:list.map(a=>[a.nom||'',a.type||'',a.race||'',a.robe||'',a.sexe||'',a.puce||'',fmtD(a.dateEntree),a.lieuCapture||'',a.amenePar||'',a.circonstances||'',a.proprioNom||'',a.proprioTel||'',a.proprioAdresse||'',a.dateSortie?fmtD(a.dateSortie):'',a.motifSortie||'',a.sortiePar||'',a.veto||'',a.dateSortie?'Sorti':'Présent'])
+    rows:filtered().map(a=>[a.nom||'',a.type||'',a.race||'',a.robe||'',a.sexe||'',a.puce||'',fmtD(a.dateEntree),a.lieuCapture||'',a.amenePar||'',a.circonstances||'',a.proprioNom||'',a.proprioTel||'',a.proprioAdresse||'',a.dateSortie?fmtD(a.dateSortie):'',a.motifSortie||'',a.sortiePar||'',a.veto||'',a.dateSortie?'Sorti':'Présent'])
   }));
-  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>chenForm(list.find(x=>x.id===tr.dataset.id)));
+  bindRows();
 };
 
 function chenForm(a){
@@ -1944,6 +1968,30 @@ function boot(v){
 }
 $('#btnLogout').onclick=()=>{if(FB.mode==='firebase'&&FB.auth.currentUser)FB.auth.signOut();session=null;$('#app').classList.remove('on');$('#loginScreen').style.display='flex';};
 $('#btnBell').onclick=()=>show(session?.type==='admin'?'admin':'dash');
+
+/* Bouton « Signaler un problème » : ouvre un e-mail pré-rempli vers l'admin. */
+const ADMIN_EMAIL = 'bluecellproduction@gmail.com'; // destinataire des signalements de problème
+$('#btnSignalProb').onclick=()=>{
+  const commune = session&&session.client ? session.client.commune : '—';
+  const qui = session&&session.user ? (session.user.nom||session.user.ident||session.email||'—') : (session&&session.email)||'—';
+  const page = (typeof currentView!=='undefined'&&currentView)?currentView:'—';
+  const sujet = `CityPilot — Signalement d'un problème (${commune})`;
+  const corps =
+`Bonjour,
+
+Je souhaite signaler un problème rencontré sur CityPilot.
+
+— Commune : ${commune}
+— Utilisateur : ${qui}
+— Page concernée : ${page}
+— Date : ${fmtD(today())}
+
+Description du problème :
+(décrivez ici ce qui ne fonctionne pas)
+
+Merci de votre aide.`;
+  location.href = `mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`;
+};
 
 /* ------------------------------ Espace citoyen ------------------------------ */
 let pubLatLng=null,pubMap=null,pubMarker=null;
