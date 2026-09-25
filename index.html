@@ -1793,7 +1793,7 @@ function usersTable(client, canManage){
   const list=client.users||[];
   return `<div class="card"><div class="hd"><h2>Utilisateurs — ${esc(client.commune)}</h2><div class="sp"></div>
       ${canManage?`<button class="btn sm pri" data-adduser="${client.id}">＋ Ajouter un utilisateur</button>`:''}</div>
-    <div class="tbl-wrap"><table><thead><tr><th>Identifiant</th><th>Nom</th><th>Rôle</th><th>État</th>${canManage?'<th></th>':''}</tr></thead>
+    <div class="tbl-wrap"><table><thead><tr><th>Identifiant / e-mail</th><th>Nom</th><th>Rôle</th><th>État</th>${canManage?'<th></th>':''}</tr></thead>
     <tbody>${list.map(u=>`<tr>
       <td><b>${esc(u.ident)}</b></td><td>${esc(u.nom)}</td><td>${roleBadge(u.role)}</td>
       <td>${u.actif!==false?'<span class="badge b-ok">Actif</span>':'<span class="badge b-muted">Désactivé</span>'}</td>
@@ -1801,38 +1801,85 @@ function usersTable(client, canManage){
     </tr>`).join('')||`<tr><td colspan="${canManage?5:4}"><div class="empty">Aucun utilisateur</div></td></tr>`}</tbody></table></div></div>`;
 }
 function bindUsersTable(scope, backView){
+  const findClient=(id)=>DB.clients.find(x=>x.id===id) || (session.client&&session.client.id===id?session.client:session.client);
   scope.querySelectorAll('[data-adduser]').forEach(b=>b.onclick=()=>{
-    const c=DB.clients.find(x=>x.id===b.dataset.adduser);userForm(c,null,backView);});
+    userForm(findClient(b.dataset.adduser),null,backView);});
   scope.querySelectorAll('[data-edituser]').forEach(b=>b.onclick=()=>{
-    const [cid,uid_]=b.dataset.edituser.split(':');const c=DB.clients.find(x=>x.id===cid);
+    const [cid,uid_]=b.dataset.edituser.split(':');const c=findClient(cid);
     userForm(c,(c.users||[]).find(u=>u.id===uid_),backView);});
 }
 function userForm(client, u, backView){
   const isNew=!u;const v=k=>esc(u?.[k]??'');
   const selfAdmin=session.type==='client'&&session.user&&u&&session.user.id===u.id;
+  // Mode Firebase réel : création de compte via l'instance secondaire (n'affecte pas la session admin)
+  const fbMode = FB.mode==='firebase' && session.fromFirebase && session.type==='client' && session.client && session.client.id;
   openModal(`
-    <div class="hd"><h2>${isNew?'Nouvel utilisateur':esc(u.nom||u.ident)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
+    <div class="hd"><h2>${isNew?'Nouvel utilisateur':esc(u.nom||u.ident||u.email)}</h2><button class="btn ghost" onclick="closeModal()">✕</button></div>
     <div class="bd"><form id="usForm">
       <div class="grid2">
-        <div class="field"><label>Identifiant de connexion</label><input name="ident" value="${v('ident')}" placeholder="ex. j.martin" required></div>
+        <div class="field"><label>${fbMode?'E-mail de connexion':'Identifiant de connexion'}</label>
+          <input name="ident" type="${fbMode?'email':'text'}" value="${v(fbMode?'email':'ident')||v('ident')}" placeholder="${fbMode?'ex. agent@ville-saintaignan.fr':'ex. j.martin'}" ${(!isNew&&fbMode)?'readonly title="L\'e-mail ne peut pas être modifié après création"':''} required></div>
         <div class="field"><label>Nom / fonction</label><input name="nom" value="${v('nom')}" placeholder="ex. Julien Martin"></div>
         <div class="field"><label>Rôle</label><select name="role" ${selfAdmin?'disabled title="Vous ne pouvez pas changer votre propre rôle"':''}>
           <option value="admin" ${v('role')==='admin'?'selected':''}>Admin communal (gère les utilisateurs)</option>
           <option value="agent" ${v('role')==='agent'||isNew?'selected':''}>Agent (saisie & consultation)</option>
         </select></div>
-        <div class="field"><label>Mot de passe ${isNew?'':'(laisser vide pour conserver)'}</label><input name="pwd" type="text" placeholder="${isNew?'mot de passe initial':'••••'}"></div>
+        <div class="field"><label>Mot de passe ${isNew?(fbMode?'initial (min. 6 caractères)':''):'(laisser vide pour conserver)'}</label><input name="pwd" type="text" placeholder="${isNew?'mot de passe initial':'••••'}"></div>
       </div>
       <label class="consent" style="color:var(--ink)"><input type="checkbox" name="actif" ${u?.actif!==false?'checked':''} ${selfAdmin?'disabled':''}>
         <span>Compte actif (peut se connecter)</span></label>
-      <p class="mini">🔒 En production, chaque utilisateur sera un compte Firebase Auth distinct ; les mots de passe ne transiteront jamais en clair.</p>
+      ${fbMode
+        ?'<p class="mini">✅ Le compte sera créé dans Firebase : l\'agent pourra se connecter avec cet e-mail et ce mot de passe (qu\'il pourra changer ensuite). Communiquez-les-lui de façon sécurisée.</p>'
+        :'<p class="mini">🔒 Mode démo : le compte reste local à la session. Connecté à Firebase, la création d\'un vrai compte agent sera disponible.</p>'}
     </form></div>
-    <div class="ft">${(!isNew&&!selfAdmin)?'<button class="btn dngr" id="usDel">Supprimer</button>':''}<div style="flex:1"></div>
+    <div class="ft">${(!isNew&&!selfAdmin)?'<button class="btn dngr" id="usDel">'+(fbMode?'Désactiver':'Supprimer')+'</button>':''}<div style="flex:1"></div>
       <button class="btn" onclick="closeModal()">Annuler</button><button class="btn pri" id="usSave">Enregistrer</button></div>`);
-  $('#usSave').onclick=()=>{
-    const fd=new FormData($('#usForm'));const ident=fd.get('ident').trim();
-    if(!ident)return toast('Identifiant requis');
+
+  $('#usSave').onclick=async()=>{
+    const fd=new FormData($('#usForm'));const ident=(fd.get('ident')||'').trim();
+    if(!ident)return toast(fbMode?'E-mail requis':'Identifiant requis');
+
+    // ---- Mode Firebase réel ----
+    if(fbMode){
+      const role=selfAdmin?u.role:fd.get('role');
+      const nom=fd.get('nom')||'';
+      const actif=selfAdmin?true:(fd.get('actif')==='on');
+      const pwd=fd.get('pwd')||'';
+      if(isNew){
+        if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ident))return toast('E-mail invalide');
+        if(pwd.length<6)return toast('Mot de passe : 6 caractères minimum');
+        const btn=$('#usSave');btn.disabled=true;btn.textContent='Création…';
+        try{
+          // Création via l'instance secondaire : ne déconnecte pas l'admin courant
+          const cred=await FB.secondary.auth().createUserWithEmailAndPassword(ident,pwd);
+          const newUid=cred.user.uid;
+          await FB.secondary.auth().signOut(); // libère l'instance secondaire
+          // Profil Firestore users/{uid}
+          await FB.db.collection('users').doc(newUid).set({
+            communeId:session.client.id, role, nom, actif, email:ident
+          });
+          toast('Compte agent créé');closeModal();show(backView);
+        }catch(err){
+          btn.disabled=false;btn.textContent='Enregistrer';
+          const map={'auth/email-already-in-use':'Cet e-mail a déjà un compte','auth/invalid-email':'E-mail invalide','auth/weak-password':'Mot de passe trop faible'};
+          toast(map[err.code]||('Erreur : '+(err.code||err.message)));
+        }
+        return;
+      } else {
+        // Édition d'un compte existant : on met à jour le profil Firestore (pas l'e-mail ni le mot de passe ici)
+        try{
+          const patch={nom};
+          if(!selfAdmin){patch.role=role;patch.actif=actif;}
+          await FB.db.collection('users').doc(u.id).set(patch,{merge:true});
+          toast('Utilisateur mis à jour');closeModal();show(backView);
+        }catch(err){toast('Erreur : '+(err.code||err.message));}
+        return;
+      }
+    }
+
+    // ---- Mode démo (inchangé) ----
     if(!client.users)client.users=[];
-    const dup=client.users.find(x=>x.ident.toLowerCase()===ident.toLowerCase()&&(!u||x.id!==u.id));
+    const dup=client.users.find(x=>x.ident&&x.ident.toLowerCase()===ident.toLowerCase()&&(!u||x.id!==u.id));
     if(dup)return toast('Cet identifiant existe déjà dans la commune');
     const obj=u||{id:uid()};
     obj.ident=ident;obj.nom=fd.get('nom');
@@ -1841,18 +1888,36 @@ function userForm(client, u, backView){
     if(fd.get('pwd'))obj.pwd=fd.get('pwd'); else if(isNew)obj.pwd='changeme';
     if(isNew)client.users.push(obj);
     save();closeModal();toast('Utilisateur enregistré');show(backView);};
-  if(!isNew&&!selfAdmin)$('#usDel').onclick=()=>{
+
+  if(!isNew&&!selfAdmin)$('#usDel').onclick=async()=>{
+    if(fbMode){
+      // Firebase ne permet pas de supprimer un compte Auth depuis le navigateur → on désactive
+      if(!confirm('Désactiver ce compte ? L\'agent ne pourra plus se connecter (le compte n\'est pas supprimé, réversible).'))return;
+      try{ await FB.db.collection('users').doc(u.id).set({actif:false},{merge:true}); toast('Compte désactivé');closeModal();show(backView);}
+      catch(err){toast('Erreur : '+(err.code||err.message));}
+      return;
+    }
     if((client.users||[]).filter(x=>x.role==='admin').length<=1&&u.role==='admin')return toast('Impossible : gardez au moins un admin communal');
     client.users=client.users.filter(x=>x.id!==u.id);save();closeModal();toast('Utilisateur supprimé');show(backView);};
 }
 
 /* Vue "Utilisateurs" côté admin communal */
-VIEWS.users=()=>{
+VIEWS.users=async()=>{
   if(session.role!=='admin'){show('dash');return;}
   $('#pageTitle').textContent='Utilisateurs de la commune';
   const c=session.client;
+  const fbMode = FB.mode==='firebase' && session.fromFirebase && c && c.id;
   $('#view').innerHTML=`<p class="mini" style="margin-bottom:14px">Gérez les accès de votre équipe. Les <b>agents</b> accèdent à tous les modules de gestion ; les <b>admins communaux</b> peuvent en plus gérer les utilisateurs.</p>
-    ${usersTable(c,true)}`;
+    ${fbMode?'<div class="empty" id="usLoading">Chargement des comptes…</div>':usersTable(c,true)}`;
+  if(fbMode){
+    // Charger les comptes réels de la commune depuis Firestore
+    try{
+      const snap=await FB.db.collection('users').where('communeId','==',c.id).get();
+      c.users=snap.docs.map(d=>({id:d.id, ...d.data(), ident:d.data().email||d.data().nom}));
+    }catch(e){ c.users=[]; console.warn('chargement users', e); }
+    $('#view').innerHTML=`<p class="mini" style="margin-bottom:14px">Gérez les accès de votre équipe. Les <b>agents</b> accèdent à tous les modules de gestion ; les <b>admins communaux</b> peuvent en plus gérer les utilisateurs.</p>
+      ${usersTable(c,true)}`;
+  }
   bindUsersTable($('#view'),'users');
 };
 
