@@ -494,9 +494,9 @@ initFirebase();
 function save(){ /* no-op : la persistance se fait par module via fsSet/fsDelete */ }
 
 /* ---- Couche Firestore (chargement au login + écriture à chaque modif) ---- */
-// Modules dont les données sont persistées dans Firestore (les autres restent en mémoire
-// tant qu'on n'a pas validé le patron). On démarre avec les arbres uniquement.
-const FS_MODULES = ['arbres'];
+// Modules dont les données sont persistées dans Firestore, chargés au login et
+// écrits à chaque modification sous communes/{communeId}/{type}.
+const FS_MODULES = ['arbres','mobilier','armoires','bornes','batiments','dae','travaux','vehicules','chenil','signalements'];
 // Vrai si le module donné doit passer par Firestore pour la session courante.
 function fsActive(type){
   return FB.mode==='firebase' && session && session.type==='client' && session.fromFirebase
@@ -515,10 +515,13 @@ async function fsLoad(type){
   }catch(e){ console.warn('fsLoad '+type, e); return -1; }
 }
 // Écrit (crée ou met à jour) un document. L'id de l'objet devient l'id du document.
+// Note : les photos base64 sont volumineuses et dépassent la limite de 1 Mo/doc Firestore.
+// Tant que Firebase Storage n'est pas branché, on ne les écrit pas dans Firestore (elles
+// restent en mémoire). Le champ `photos` cloud est laissé de côté ici.
 async function fsSet(type, obj){
   if(!fsActive(type)) return;
   try{
-    const { id, ...data } = obj;
+    const { id, photos, photo, ...data } = obj;
     await fsColl(type).doc(String(id)).set(data, { merge:true });
   }catch(e){ console.warn('fsSet '+type, e); toast('Enregistrement cloud échoué (voir connexion)'); }
 }
@@ -568,7 +571,7 @@ function computeAlerts(){
    ou la batterie sont périmées ou le seront sous 30 jours. Anti-doublon via sourceDae+kind.
    L'intervention se referme (statut Terminée) automatiquement si le problème est résolu. */
 function syncDaeInterventions(){
-  let created=0;
+  let created=0; const touched=[];
   DB.dae.forEach(x=>{
     [['electrodes','Électrodes'],['batterie','Batterie']].forEach(([k,lbl])=>{
       const d=daysTo(x[k]);
@@ -576,23 +579,24 @@ function syncDaeInterventions(){
       const existing=DB.travaux.find(i=>i.sourceKey===key);
       if(d<=30){
         if(!existing){
-          DB.travaux.push({
+          const nv={
             id:uid(), lat:x.lat, lng:x.lng, sourceKey:key, sourceDae:x.id,
             titre:`Maintenance DAE — ${lbl.toLowerCase()}`, categorie:'DAE / défibrillateur',
             priorite: d<0?'Haute':'Moyenne', statut:'À planifier', cree:today(),
             desc:`${lbl} du défibrillateur « ${x.lieu} » ${d<0?'périmé(e)s depuis le '+fmtD(x[k]):'à remplacer avant le '+fmtD(x[k])} — commander et remplacer.`,
             photos:[], histo:[{d:today(),t:'Créé automatiquement (alerte péremption DAE)'}]
-          });
-          created++;
+          };
+          DB.travaux.push(nv); touched.push(nv); created++;
         } else if(existing.statut==='Terminé'){
-          existing.statut='À planifier'; existing.histo.push({d:today(),t:'Rouvert : péremption à nouveau détectée'});
+          existing.statut='À planifier'; existing.histo.push({d:today(),t:'Rouvert : péremption à nouveau détectée'}); touched.push(existing);
         }
       } else if(existing && existing.statut!=='Terminé'){
-        existing.statut='Terminé'; existing.histo.push({d:today(),t:'Clôturé automatiquement : consommable à jour'});
+        existing.statut='Terminé'; existing.histo.push({d:today(),t:'Clôturé automatiquement : consommable à jour'}); touched.push(existing);
       }
     });
   });
-  if(created) save();
+  // Persistance des travaux impactés (asynchrone, sans bloquer l'affichage)
+  touched.forEach(t=>fsSet('travaux', t));
   return created;
 }
 
@@ -1099,15 +1103,15 @@ function chenForm(a){
   ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));
   ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
   dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)loadPhoto(e.dataTransfer.files[0]);});
-  $('#chSave').onclick=()=>{
+  $('#chSave').onclick=async()=>{
     const fd=new FormData($('#chForm'));const obj=a||{id:uid()};
     ['type','nom','race','robe','sexe','puce','dateEntree','lieuCapture','amenePar','circonstances','proprioNom','proprioTel','proprioAdresse','dateSortie','motifSortie','sortiePar','veto'].forEach(k=>obj[k]=fd.get(k)||'');
     obj.dateSortie=fd.get('dateSortie')||null;
     obj.photo=photoBuf;
     if(isNew)DB.chenil.push(obj);
-    save();closeModal();toast('Fiche animal enregistrée');show('chenil');
+    await fsSet('chenil',obj);closeModal();toast('Fiche animal enregistrée');show('chenil');
   };
-  if(!isNew)$('#chDel').onclick=()=>{ if(!confirm('Supprimer définitivement cette fiche animal ?'))return; DB.chenil=DB.chenil.filter(x=>x.id!==a.id);save();closeModal();show('chenil'); };
+  if(!isNew)$('#chDel').onclick=async()=>{ if(!confirm('Supprimer définitivement cette fiche animal ?'))return; DB.chenil=DB.chenil.filter(x=>x.id!==a.id);await fsDelete('chenil',a.id);closeModal();show('chenil'); };
   if(!isNew)$('#chPrint').onclick=()=>printAnimal(a);
 }
 
@@ -1252,20 +1256,20 @@ function vehForm(v){
     if($('#vt-trav'))$('#vt-trav').style.display=b.dataset.t==='trav'?'block':'none';
     if($('#vt-repo'))$('#vt-repo').style.display=b.dataset.t==='repo'?'block':'none';});
   if(!isNew){
-    $('#vt-trav')&&$('#vt-trav').querySelectorAll('[data-delop]').forEach(btn=>btn.onclick=()=>{
-      v.travaux.splice(+btn.dataset.delop,1);save();vehForm(v);document.querySelector('[data-t=trav]').click();});
+    $('#vt-trav')&&$('#vt-trav').querySelectorAll('[data-delop]').forEach(btn=>btn.onclick=async()=>{
+      v.travaux.splice(+btn.dataset.delop,1);await fsSet('vehicules',v);vehForm(v);document.querySelector('[data-t=trav]').click();});
   }
-  if(!isNew&&$('#twAdd'))$('#twAdd').onclick=()=>{
+  if(!isNew&&$('#twAdd'))$('#twAdd').onclick=async()=>{
     if(!$('#twT').value.trim())return toast('Décrivez l\'opération');
     if(!v.travaux)v.travaux=[];
     v.travaux.unshift({d:$('#twD').value,type:$('#twType').value,t:$('#twT').value,km:$('#twKm').value,cout:$('#twC').value});
-    save();toast('Opération ajoutée au carnet');vehForm(v);document.querySelector('[data-t=trav]').click();};
-  $('#vhSave').onclick=()=>{
+    await fsSet('vehicules',v);toast('Opération ajoutée au carnet');vehForm(v);document.querySelector('[data-t=trav]').click();};
+  $('#vhSave').onclick=async()=>{
     const fd=new FormData($('#vhForm'));const obj=v||{id:uid(),travaux:[]};
     ['nom','immat','marque','annee','km','ct','revision','assurance'].forEach(k=>obj[k]=fd.get(k)||null);
     if(isNew)DB.vehicules.push(obj);
-    save();closeModal();toast('Enregistré');show('vehicules');};
-  if(!isNew)$('#vhDel').onclick=()=>{DB.vehicules=DB.vehicules.filter(x=>x.id!==v.id);save();closeModal();show('vehicules');};
+    await fsSet('vehicules',obj);closeModal();toast('Enregistré');show('vehicules');};
+  if(!isNew)$('#vhDel').onclick=async()=>{DB.vehicules=DB.vehicules.filter(x=>x.id!==v.id);await fsDelete('vehicules',v.id);closeModal();show('vehicules');};
   if(!isNew)$('#vhPrint').onclick=()=>printVehicule(v);
 }
 
@@ -1410,16 +1414,16 @@ function travForm(t,latlng){
   ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));
   ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
   dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
-  $('#tvSave').onclick=()=>{
+  $('#tvSave').onclick=async()=>{
     const fd=new FormData($('#tvForm'));const old=t.statut;const wasNew=isNew;
     ['titre','categorie','priorite','statut','desc'].forEach(k=>t[k]=fd.get(k));
     const h=$('#tvHisto')?.value?.trim();if(h)t.histo.push({d:today(),t:h});
     if(!isNew&&old&&old!==t.statut)t.histo.push({d:today(),t:'Statut : '+old+' → '+t.statut});
     if(isNew)DB.travaux.push(t);
-    save();
+    await fsSet('travaux', t);
     if(wasNew){toast('Travaux créé — vous pouvez l\'imprimer ou le partager');travForm(t);}
     else{closeModal();toast('Enregistré');show('travaux');}};
-  if(!isNew)$('#tvDel').onclick=()=>{DB.travaux=DB.travaux.filter(x=>x.id!==t.id);save();closeModal();show('travaux');};
+  if(!isNew)$('#tvDel').onclick=async()=>{DB.travaux=DB.travaux.filter(x=>x.id!==t.id);await fsDelete('travaux',t.id);closeModal();show('travaux');};
   if(!isNew)$('#tvPrint').onclick=()=>printTravaux(t);
   if(!isNew)$('#tvShare').onclick=()=>shareTravaux(t);
 }
@@ -1532,16 +1536,17 @@ VIEWS.signalements=()=>{
   buildMap('sigMap',DB.signalements,s=>s.statut==='Nouveau'?'#E8620F':s.statut==='En cours'?'#B77A12':'#2E7D52',()=>{});
   $('#view').querySelectorAll('[data-delsig]').forEach(b=>b.onclick=e=>{e.stopPropagation();
     if(!confirm('Supprimer définitivement ce signalement et ses données personnelles ?'))return;
-    DB.signalements=DB.signalements.filter(x=>x.id!==b.dataset.delsig);save();toast('Signalement supprimé');show('signalements');});
+    DB.signalements=DB.signalements.filter(x=>x.id!==b.dataset.delsig);fsDelete('signalements',b.dataset.delsig);toast('Signalement supprimé');show('signalements');});
   $('#view').querySelectorAll('[data-next]').forEach(b=>b.onclick=e=>{e.stopPropagation();
     const s=DB.signalements.find(x=>x.id===b.dataset.next);
-    s.statut=s.statut==='Nouveau'?'En cours':'Traité';save();show('signalements');});
+    s.statut=s.statut==='Nouveau'?'En cours':'Traité';fsSet('signalements',s);show('signalements');});
   $('#view').querySelectorAll('[data-inter]').forEach(b=>b.onclick=e=>{e.stopPropagation();
     const s=DB.signalements.find(x=>x.id===b.dataset.inter);
     const catMap={'Voirie / chaussée':'Voirie','Éclairage public':'Éclairage public','Propreté / dépôt sauvage':'Autre','Espaces verts / arbre':'Espaces verts / jeux','Mobilier urbain':'Mobilier urbain','Bâtiment communal':'Bâtiment'};
-    DB.travaux.push({id:uid(),lat:s.lat,lng:s.lng,titre:s.cat||'Signalement citoyen',categorie:catMap[s.cat]||'Autre',voie:'',priorite:'Moyenne',statut:'À planifier',cree:today(),
-      desc:'[Signalement citoyen] '+s.desc,photos:[],histo:[{d:today(),t:'Créé depuis un signalement citoyen'}]});
-    s.statut='En cours';save();toast('Travaux créé depuis le signalement');show('travaux');});
+    const nv={id:uid(),lat:s.lat,lng:s.lng,titre:s.cat||'Signalement citoyen',categorie:catMap[s.cat]||'Autre',voie:'',priorite:'Moyenne',statut:'À planifier',cree:today(),
+      desc:'[Signalement citoyen] '+s.desc,photos:[],histo:[{d:today(),t:'Créé depuis un signalement citoyen'}]};
+    DB.travaux.push(nv);fsSet('travaux',nv);
+    s.statut='En cours';fsSet('signalements',s);toast('Travaux créé depuis le signalement');show('travaux');});
 };
 
 /* --- Administration clients --- */
@@ -1662,11 +1667,12 @@ VIEWS.params=()=>{
       <div class="card"><div class="hd"><h2>🔥 Firebase (comptes & données)</h2></div><div class="bd">
         <p style="margin-bottom:10px">Statut : <span class="badge ${FB.mode==='firebase'?'b-ok':'b-warn'}">${FB.mode==='firebase'?'Connecté — Auth active':'Mode démo (données en mémoire)'}</span></p>
         ${FB.mode==='firebase'&&session.type==='client'?`
-          <p class="mini" style="margin-bottom:8px">Persistance Firestore active pour : <b>${FS_MODULES.join(', ')}</b>. Les autres modules restent en mémoire (déploiement progressif).</p>
-          <p class="mini" style="margin-bottom:10px">Module <b>arbres</b> : <b>${DB.arbres.length}</b> élément(s) chargé(s) depuis le cloud.</p>
+          <p class="mini" style="margin-bottom:8px">Persistance Firestore active — vos données sont enregistrées dans le cloud à chaque modification et rechargées à la connexion.</p>
+          <p class="mini" style="margin-bottom:10px">Chargé depuis le cloud : <b>${DB.arbres.length}</b> arbre(s), <b>${DB.travaux.length}</b> travaux, <b>${DB.vehicules.length}</b> véhicule(s), <b>${DB.chenil.length}</b> animal(aux).</p>
+          <p class="mini" style="margin-bottom:10px">⚠ Les <b>photos</b> ne sont pas encore sauvegardées (Firebase Storage à venir) — elles restent en mémoire.</p>
           ${session.role==='admin'?`<button class="btn" id="btnSeed">Initialiser des arbres de démo dans le cloud</button>
           <p class="mini" style="margin-top:6px">À utiliser une fois, sur une commune vide, pour tester la persistance.</p>`:''}
-        `:`<p class="mini">Authentication et Firestore sont activés. La persistance des données est en cours de déploiement, module par module.</p>`}
+        `:`<p class="mini">Authentication et Firestore sont activés. Connectez-vous avec un compte de commune (e-mail) pour activer la persistance cloud.</p>`}
       </div></div>
       <div class="card"><div class="hd"><h2>💶 Facturation</h2></div><div class="bd">
         <p class="mini">Les communes règlent généralement par <b>mandat administratif</b> (facture / virement du Trésor public), pas par carte. Le statut d'abonnement de chaque commune est géré manuellement dans le panel « Clients & abonnements ».</p>
@@ -1774,7 +1780,7 @@ VIEWS.rgpd=()=>{
     const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(data,null,2));
     a.download='citypilot-rgpd-'+today()+'.json';a.click();toast('Export généré');};
   $('#rgAnon').onclick=()=>{if(!confirm('Anonymiser le nom et le contact de tous les signalements ? La description technique est conservée.'))return;
-    DB.signalements.forEach(s=>{s.nom='';s.contact='';});save();toast('Signalements anonymisés');show('rgpd');};
+    DB.signalements.forEach(s=>{s.nom='';s.contact='';fsSet('signalements',s);});toast('Signalements anonymisés');show('rgpd');};
   if(isCommunalAdmin)$('#rgDelete').onclick=()=>{
     if(!confirm('Confirmer la demande de suppression du compte ?\n\nEn démo, cela vous déconnecte. En production, la procédure d\'effacement RGPD serait déclenchée.'))return;
     toast('Demande enregistrée — vous allez être déconnecté');
@@ -2027,13 +2033,21 @@ $('#lnkForgot').onclick=async()=>{
   }
 };
 $('#pubBack').onclick=()=>{$('#publicScreen').style.display='none';$('#loginScreen').style.display='flex';};
-$('#pubSend').onclick=()=>{
+$('#pubSend').onclick=async()=>{
   const desc=$('#pubDesc').value.trim();
   if(!desc)return toast('Merci de décrire le problème');
   if(!$('#pubConsent').checked)return toast('Merci de cocher la case de consentement');
-  DB.signalements.push({id:uid(),lat:pubLatLng?.lat??null,lng:pubLatLng?.lng??null,
-    cat:$('#pubCat').value,desc,nom:$('#pubNom').value,contact:$('#pubContact').value,date:today(),statut:'Nouveau'});
-  save();
+  const sig={id:uid(),lat:pubLatLng?.lat??null,lng:pubLatLng?.lng??null,
+    cat:$('#pubCat').value,desc,nom:$('#pubNom').value,contact:$('#pubContact').value,date:today(),statut:'Nouveau'};
+  DB.signalements.push(sig);
+  // Si la page publique cible une commune (?commune=xxx) et Firebase est prêt,
+  // le signalement est écrit dans Firestore (création publique autorisée par les règles).
+  const params=new URLSearchParams(location.search);
+  const cid=params.get('commune');
+  if(cid && FB.mode==='firebase'){
+    try{ const { id, ...data }=sig; await FB.db.collection('communes').doc(cid).collection('signalements').doc(String(id)).set(data); }
+    catch(e){ console.warn('signalement public', e); }
+  }
   $('#pubDesc').value='';$('#pubNom').value='';$('#pubContact').value='';$('#pubConsent').checked=false;
   if(pubMarker){pubMap.removeLayer(pubMarker);pubMarker=null;pubLatLng=null;}
   toast('Signalement envoyé — merci ! Les services techniques ont été alertés.');
